@@ -54,7 +54,7 @@ models:
     output_cost_per_mtok: 5.0
     region: global          # set to your deployment's residency (e.g. eu via Bedrock/Vertex)
     trains_on_data: false   # API default — confirm in your DPA
-    notes: Needs ANTHROPIC_API_KEY and `pip install 'flightdeck-ai[anthropic]'`.
+    notes: Needs ANTHROPIC_API_KEY and `pip install 'ai-flightdeck[anthropic]'`.
 
   - id: sonnet
     provider: anthropic
@@ -73,7 +73,7 @@ models:
     output_cost_per_mtok: 2.4
     region: global          # for Azure OpenAI set base_url and your region
     trains_on_data: false
-    notes: Needs OPENAI_API_KEY and `pip install 'flightdeck-ai[openai]'`.
+    notes: Needs OPENAI_API_KEY and `pip install 'ai-flightdeck[openai]'`.
 """
 
 USECASES = """\

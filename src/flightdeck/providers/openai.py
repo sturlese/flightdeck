@@ -1,4 +1,4 @@
-"""OpenAI adapter. Requires the optional extra: pip install flightdeck-ai[openai]
+"""OpenAI adapter. Requires the optional extra: pip install ai-flightdeck[openai]
 
 Uses chat.completions for maximum endpoint compatibility: the same adapter
 serves api.openai.com, Azure OpenAI and OpenAI-compatible gateways — point the
@@ -19,7 +19,7 @@ class OpenAIProvider:
             from openai import OpenAI
         except ImportError:
             raise ProviderError(
-                "openai SDK not installed — pip install 'flightdeck-ai[openai]'"
+                "openai SDK not installed — pip install 'ai-flightdeck[openai]'"
             ) from None
         if not os.environ.get("OPENAI_API_KEY"):
             raise ProviderError("OPENAI_API_KEY is not set")

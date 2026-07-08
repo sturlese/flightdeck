@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "flightdeck-ai"
+name = "ai-flightdeck"
 version = "0.1.0"
 description = "The flight deck for enterprise AI adoption: declare AI use cases as code, run them under policy, and prove the value with an audit-grade ledger."
 readme = "README.md"

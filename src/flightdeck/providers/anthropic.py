@@ -1,4 +1,4 @@
-"""Anthropic adapter. Requires the optional extra: pip install flightdeck-ai[anthropic]
+"""Anthropic adapter. Requires the optional extra: pip install ai-flightdeck[anthropic]
 
 Auth comes from the standard ANTHROPIC_API_KEY environment variable. A registry
 entry's base_url override supports gateways and regional deployments; usage
@@ -17,7 +17,7 @@ class AnthropicProvider:
             from anthropic import Anthropic
         except ImportError:
             raise ProviderError(
-                "anthropic SDK not installed — pip install 'flightdeck-ai[anthropic]'"
+                "anthropic SDK not installed — pip install 'ai-flightdeck[anthropic]'"
             ) from None
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise ProviderError("ANTHROPIC_API_KEY is not set")
