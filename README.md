@@ -28,7 +28,7 @@ estimated by a model.
 ## Try it in 2 minutes (no API keys)
 
 ```bash
-pip install ai-flightdeck   # or: pipx install ai-flightdeck / pip install -e . from a clone
+pip install git+https://github.com/sturlese/flightdeck.git
 flightdeck demo
 ```
 
@@ -177,9 +177,11 @@ More in [docs/architecture.md](docs/architecture.md) · governance details in
 ## Install
 
 ```bash
-pip install ai-flightdeck                # core: offline mock provider, all commands
-pip install 'ai-flightdeck[anthropic]'   # + Anthropic (ANTHROPIC_API_KEY)
-pip install 'ai-flightdeck[openai]'      # + OpenAI / Azure OpenAI (OPENAI_API_KEY)
+pip install git+https://github.com/sturlese/flightdeck.git   # core: offline mock, all commands
+
+# with a provider extra, from a clone:
+git clone https://github.com/sturlese/flightdeck.git && cd flightdeck
+pip install -e ".[anthropic]"   # Anthropic (ANTHROPIC_API_KEY) — or ".[openai]" for OpenAI/Azure
 ```
 
 Python 3.11+. Development: `make install test lint` — the suite is offline and fast, CI runs
