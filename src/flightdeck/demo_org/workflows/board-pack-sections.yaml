@@ -1,0 +1,43 @@
+id: board-pack-sections
+name: Board pack section drafting
+department: Finance
+owner: elena
+use_case: board-pack
+description: >
+  First drafts of recurring board pack sections from closed monthly figures.
+  Restricted data: the org policy allows exactly one vetted model deployment,
+  and the CFO's team reviews every word. In the demo timeline, the first two
+  weeks show this workflow BLOCKED — it started before the restricted
+  allowlist was approved, and the ledger kept the receipts.
+data_classification: restricted
+tier: frontier
+review: human_in_the_loop
+
+baseline:
+  minutes_per_task: 120
+  tasks_per_month: 10
+  hourly_cost: 80
+
+steps:
+  - id: draft
+    vars: [section, figures, prior_section]
+    max_output_tokens: 1600
+    prompt: |
+      You draft sections of Meridian Interactive's monthly board pack.
+
+      Draft the "{{section}}" section from the closed figures below. Rules:
+      - Every number in the draft must come from FIGURES, verbatim. No
+        derived ratios unless present in FIGURES. No projections.
+      - Follow the structure and register of the prior month's section.
+      - Where the figures moved more than 10% month-over-month, state the
+        movement and leave a bracketed [DRIVER?] marker for the CFO team
+        to fill in — do not speculate about causes.
+
+      FIGURES:
+      {{figures}}
+
+      PRIOR MONTH'S SECTION:
+      {{prior_section}}
+
+success:
+  acceptance_target: 0.80

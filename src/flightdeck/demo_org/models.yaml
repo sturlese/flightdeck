@@ -1,0 +1,45 @@
+# The governed model registry: capability tier + the governance facts policy
+# reasons over (residency, training use, price). The demo keeps every entry on
+# the offline `mock` provider so it runs without API keys — in a real org these
+# rows point at anthropic / openai (or Azure/Bedrock deployments via base_url),
+# and prices are your negotiated rates in the org currency.
+models:
+  - id: haiku-eu
+    provider: mock
+    model: mock-haiku
+    tier: fast
+    input_cost_per_mtok: 0.8
+    output_cost_per_mtok: 4.0
+    region: eu
+    trains_on_data: false
+    notes: Stand-in for a fast model on an EU deployment (e.g. Claude Haiku on Bedrock eu-central-1).
+
+  - id: sonnet-eu
+    provider: mock
+    model: mock-sonnet
+    tier: balanced
+    input_cost_per_mtok: 3.0
+    output_cost_per_mtok: 15.0
+    region: eu
+    trains_on_data: false
+    notes: Stand-in for a balanced model on an EU deployment.
+
+  - id: opus-eu
+    provider: mock
+    model: mock-opus
+    tier: frontier
+    input_cost_per_mtok: 5.0
+    output_cost_per_mtok: 25.0
+    region: eu
+    trains_on_data: false
+    notes: Stand-in for a frontier model on a vetted EU deployment; the only model cleared for restricted data.
+
+  - id: turbo-us
+    provider: mock
+    model: mock-turbo
+    tier: fast
+    input_cost_per_mtok: 0.3
+    output_cost_per_mtok: 1.2
+    region: us
+    trains_on_data: true
+    notes: Deliberately kept in the registry — cheapest model on paper, but the vendor trains on inputs, so policy refuses it anything beyond public data. Watch the router skip it.

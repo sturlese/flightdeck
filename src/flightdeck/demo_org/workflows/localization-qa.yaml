@@ -1,0 +1,44 @@
+id: localization-qa
+name: Localization QA pre-screen
+department: Localization
+owner: yuki
+use_case: localization-qa
+description: >
+  First-pass QA on translated strings: glossary compliance, placeholder
+  integrity, tone consistency. Piloting — the acceptance numbers decide
+  whether it scales or gets reworked.
+data_classification: internal
+tier: balanced
+review: human_in_the_loop
+
+baseline:
+  minutes_per_task: 35
+  tasks_per_month: 210
+
+steps:
+  - id: screen
+    vars: [source_strings, translated_strings, glossary, language]
+    max_output_tokens: 800
+    prompt: |
+      You are a localization QA assistant for video game strings ({{language}}).
+
+      Compare the translated strings against the source. Report ONLY:
+      - glossary violations (the glossary below is authoritative),
+      - broken or missing placeholders ({0}, %s, <tags>),
+      - tone drift from the source register,
+      - truncation risks (UI strings over source length by >30%).
+      For each finding: string id, issue, suggested fix. If a batch is clean,
+      say "clean" — do not pad findings.
+
+      GLOSSARY:
+      {{glossary}}
+
+      SOURCE:
+      {{source_strings}}
+
+      TRANSLATED:
+      {{translated_strings}}
+
+success:
+  weekly_active_users_target: 5
+  acceptance_target: 0.75

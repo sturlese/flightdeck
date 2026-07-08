@@ -1,0 +1,149 @@
+# The use-case backlog: every automation candidate with the business facts that
+# make it scoreable — what the task costs today, how much of it AI can take,
+# how ready the data is, how risky it would be. `flightdeck backlog` ranks
+# these; `flightdeck promote <id>` scaffolds a workflow from one.
+usecases:
+  # ------------------------------------------------------------- promoted
+  - id: support-replies
+    name: Player support reply drafting
+    department: Player Support
+    description: Draft tier-1 ticket replies from KB articles for agent review.
+    task_minutes: 12
+    tasks_per_month: 640
+    automation_potential: 0.75
+    data_readiness: 4
+    process_stability: 4
+    risk: 2
+    effort_weeks: 2
+    status: live
+
+  - id: community-digests
+    name: Community sentiment digests
+    department: Community
+    description: Daily channel summaries and weekly per-title sentiment digests.
+    task_minutes: 20
+    tasks_per_month: 88
+    automation_potential: 0.9
+    data_readiness: 4
+    process_stability: 5
+    risk: 1
+    effort_weeks: 1
+    status: live
+
+  - id: localization-qa
+    name: Localization QA pre-screen
+    department: Localization
+    description: First-pass consistency and glossary checks on translated strings.
+    task_minutes: 35
+    tasks_per_month: 210
+    automation_potential: 0.6
+    data_readiness: 3
+    process_stability: 3
+    risk: 2
+    effort_weeks: 3
+    status: piloting
+
+  - id: contract-triage
+    name: Partner contract triage
+    department: Legal
+    description: Clause extraction and risk flags on inbound partner agreements.
+    task_minutes: 50
+    tasks_per_month: 45
+    automation_potential: 0.65
+    data_readiness: 4
+    process_stability: 4
+    risk: 4
+    effort_weeks: 3
+    status: live
+
+  - id: board-pack
+    name: Board pack section drafting
+    department: Finance
+    description: First drafts of recurring board pack sections from closed figures.
+    task_minutes: 120
+    tasks_per_month: 10
+    automation_potential: 0.55
+    data_readiness: 4
+    process_stability: 5
+    risk: 5
+    effort_weeks: 2
+    status: live
+
+  - id: patch-notes
+    name: Patch notes drafting
+    department: Studio Ops
+    description: Player-facing patch notes from internal change logs.
+    task_minutes: 30
+    tasks_per_month: 60
+    automation_potential: 0.8
+    data_readiness: 5
+    process_stability: 4
+    risk: 1
+    effort_weeks: 1
+    status: live
+
+  # ------------------------------------------------------------ candidates
+  - id: qa-bug-triage
+    name: QA bug report triage
+    department: Studio Ops
+    description: Cluster, dedupe and severity-tag incoming bug reports.
+    task_minutes: 8
+    tasks_per_month: 1200
+    automation_potential: 0.6
+    data_readiness: 4
+    process_stability: 3
+    risk: 2
+    effort_weeks: 4
+    status: candidate
+
+  - id: invoice-coding
+    name: Vendor invoice coding
+    department: Finance
+    description: Pre-code vendor invoices to cost centers from PDF extracts.
+    task_minutes: 6
+    tasks_per_month: 950
+    automation_potential: 0.8
+    data_readiness: 2
+    process_stability: 5
+    risk: 3
+    effort_weeks: 6
+    status: candidate
+
+  - id: chat-moderation-assist
+    name: Player chat moderation assist
+    department: Community
+    description: Pre-classify reported chat messages against the conduct policy.
+    task_minutes: 2
+    tasks_per_month: 9000
+    automation_potential: 0.5
+    data_readiness: 3
+    process_stability: 4
+    risk: 5
+    effort_weeks: 8
+    status: candidate
+
+  - id: jd-drafting
+    name: Job description drafting
+    department: People
+    description: Role descriptions from hiring manager intake notes.
+    task_minutes: 45
+    tasks_per_month: 25
+    automation_potential: 0.7
+    data_readiness: 4
+    process_stability: 4
+    risk: 2
+    effort_weeks: 1.5
+    status: candidate
+
+  - id: ua-creative-variants
+    name: UA creative copy variants
+    department: Marketing
+    description: Ad copy variants per campaign brief for A/B testing.
+    task_minutes: 25
+    tasks_per_month: 80
+    automation_potential: 0.5
+    data_readiness: 3
+    process_stability: 2
+    risk: 3
+    effort_weeks: 3
+    status: candidate

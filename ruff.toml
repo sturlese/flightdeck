@@ -1,0 +1,18 @@
+# Lint config for src/ and tests/.
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+  "SIM105",  # try/except/pass is fine for best-effort cleanup
+  "SIM108",  # ternary is not always clearer
+]
+
+[lint.isort]
+known-first-party = ["flightdeck"]
+
+[lint.per-file-ignores]
+# The dashboard template is a single-file HTML/CSS artifact embedded as a string;
+# one rule per line beats wrapped CSS.
+"src/flightdeck/report/html.py" = ["E501"]

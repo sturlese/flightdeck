@@ -1,0 +1,38 @@
+# Meridian Interactive — a fictional 60-person games publisher, one year into
+# its AI program. Everything in this folder is the demo dataset for flightdeck:
+# realistic shapes, invented numbers.
+name: Meridian Interactive
+currency: EUR
+default_hourly_cost: 42.0
+default_review_minutes: 2.0
+
+departments:
+  - name: Player Support
+    headcount: 14
+  - name: Community
+    headcount: 6
+  - name: Localization
+    headcount: 8
+  - name: Legal
+    headcount: 3
+  - name: Finance
+    headcount: 4
+  - name: Studio Ops
+    headcount: 9
+  - name: Marketing
+    headcount: 7
+  - name: People
+    headcount: 4
+
+policy:
+  redact_pii_default: true
+  data_rules:
+    # public: any registered model may serve it (the default rule).
+    internal:
+      forbid_training_vendors: true
+    confidential:
+      forbid_training_vendors: true
+      regions: [eu]
+    restricted:
+      forbid_training_vendors: true
+      models: [opus-eu]   # board material runs on exactly one vetted deployment

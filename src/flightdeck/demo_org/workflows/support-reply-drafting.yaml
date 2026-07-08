@@ -1,0 +1,42 @@
+id: support-reply-drafting
+name: Support reply drafting
+department: Player Support
+owner: aisha
+use_case: support-replies
+description: >
+  Drafts a reply to a tier-1 player ticket from the ticket text and the
+  relevant KB excerpt. Agents review every draft before sending.
+data_classification: internal
+tier: fast
+review: human_in_the_loop
+
+baseline:
+  minutes_per_task: 12
+  tasks_per_month: 640
+  hourly_cost: 38
+
+steps:
+  - id: draft
+    vars: [ticket, kb_excerpt]
+    max_output_tokens: 600
+    prompt: |
+      You draft replies for Meridian Interactive's player support team.
+
+      Write a reply to the ticket below. Ground every factual claim in the KB
+      excerpt; if the KB does not cover the issue, say the case needs escalation
+      instead of guessing. Match the player's language. Tone: warm, direct,
+      no corporate filler. End with one concrete next step for the player.
+
+      TICKET:
+      {{ticket}}
+
+      KB EXCERPT:
+      {{kb_excerpt}}
+
+guardrails:
+  redact_pii: true
+  monthly_budget: 120
+
+success:
+  weekly_active_users_target: 10
+  acceptance_target: 0.80

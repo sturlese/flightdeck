@@ -1,0 +1,46 @@
+id: patch-notes-drafting
+name: Patch notes drafting
+department: Studio Ops
+owner: leo
+use_case: patch-notes
+description: >
+  Turns internal change logs into player-facing patch notes. Two steps —
+  a structured draft, then a tone pass in the studio's voice — showing how
+  steps chain through {{steps.<id>}}.
+data_classification: public
+tier: fast
+review: human_in_the_loop
+
+baseline:
+  minutes_per_task: 30
+  tasks_per_month: 60
+
+steps:
+  - id: draft
+    vars: [changelog, game]
+    max_output_tokens: 700
+    prompt: |
+      Turn this internal change log for {{game}} into draft patch notes.
+
+      Group into: New, Improvements, Balance changes, Bug fixes. Translate
+      engineering language into player language (what changed and why it
+      matters in play). Drop internal-only items (build tooling, telemetry,
+      refactors). Keep exact numbers for balance changes.
+
+      CHANGE LOG:
+      {{changelog}}
+
+  - id: polish
+    vars: []
+    max_output_tokens: 700
+    prompt: |
+      Rewrite these patch notes in Meridian's player-facing voice: playful
+      but precise, second person, no exclamation marks, no marketing
+      superlatives. Keep the structure and every number exactly as given.
+
+      DRAFT:
+      {{steps.draft}}
+
+success:
+  weekly_active_users_target: 4
+  acceptance_target: 0.85

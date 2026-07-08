@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# flightdeck working data (never commit an org's runtime state)
+.flightdeck/
+*.sqlite3
+ledger.jsonl
+dashboard.html
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 430" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrowb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2a78d6"/>
+    </marker>
+  </defs>
+
+  <!-- ======================= column 1: declared intent ======================= -->
+  <text x="150" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#57606a" letter-spacing=".08em">DECLARED INTENT · YAML IN GIT</text>
+
+  <g>
+    <rect x="40" y="46" width="220" height="58" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="58" y="70" font-size="13" font-weight="650" fill="#24292f">usecases.yaml</text>
+    <text x="58" y="88" font-size="11.5" fill="#57606a">the backlog: cost today, risk, effort</text>
+  </g>
+  <g>
+    <rect x="40" y="114" width="220" height="58" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="58" y="138" font-size="13" font-weight="650" fill="#24292f">workflows/*.yaml</text>
+    <text x="58" y="156" font-size="11.5" fill="#57606a">steps + baseline + success criteria</text>
+  </g>
+  <g>
+    <rect x="40" y="182" width="220" height="58" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="58" y="206" font-size="13" font-weight="650" fill="#24292f">models.yaml</text>
+    <text x="58" y="224" font-size="11.5" fill="#57606a">registry: tier, price, residency, training</text>
+  </g>
+  <g>
+    <rect x="40" y="250" width="220" height="58" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="58" y="274" font-size="13" font-weight="650" fill="#24292f">flightdeck.yaml</text>
+    <text x="58" y="292" font-size="11.5" fill="#57606a">org, economics, policy data rules</text>
+  </g>
+
+  <!-- backlog scoring -->
+  <g>
+    <rect x="40" y="344" width="220" height="52" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+    <text x="58" y="366" font-size="13" font-weight="650" fill="#24292f">backlog scoring</text>
+    <text x="58" y="383" font-size="11.5" fill="#57606a">value × feasibility × risk ÷ effort</text>
+  </g>
+  <path d="M150 308 V344" fill="none" stroke="#57606a" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- ======================= column 2: governed execution ======================= -->
+  <text x="530" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#57606a" letter-spacing=".08em">GOVERNED EXECUTION · flightdeck run</text>
+
+  <rect x="330" y="46" width="400" height="262" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <text x="350" y="76" font-size="13.5" font-weight="700" fill="#24292f">the runner — every gate is pure code</text>
+
+  <g>
+    <rect x="350" y="92" width="360" height="40" rx="8" fill="#eef4fd" stroke="#b6d0f0"/>
+    <text x="368" y="117" font-size="12.5" fill="#24292f"><tspan font-weight="650">1 · budget gate</tspan>  —  monthly cap already committed?</text>
+  </g>
+  <g>
+    <rect x="350" y="140" width="360" height="40" rx="8" fill="#eef4fd" stroke="#b6d0f0"/>
+    <text x="368" y="165" font-size="12.5" fill="#24292f"><tspan font-weight="650">2 · data policy → router</tspan>  —  class-cleared models, by tier</text>
+  </g>
+  <g>
+    <rect x="350" y="188" width="360" height="40" rx="8" fill="#eef4fd" stroke="#b6d0f0"/>
+    <text x="368" y="213" font-size="12.5" fill="#24292f"><tspan font-weight="650">3 · PII redaction</tspan>  —  variables scrubbed before egress</text>
+  </g>
+  <g>
+    <rect x="350" y="236" width="360" height="40" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="368" y="261" font-size="12.5" fill="#24292f"><tspan font-weight="650">4 · provider call</tspan>  —  anthropic · openai/azure · mock</text>
+  </g>
+  <text x="530" y="292" text-anchor="middle" font-size="11" fill="#57606a" font-style="italic">blocked and failed runs are recorded too — the program learns from its refusals</text>
+
+  <path d="M260 177 H330" fill="none" stroke="#57606a" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- ======================= column 3: evidence & value ======================= -->
+  <text x="945" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#57606a" letter-spacing=".08em">EVIDENCE → PROVABLE VALUE</text>
+
+  <g>
+    <rect x="800" y="46" width="290" height="56" rx="10" fill="#f6f8fa" stroke="#d0d7de"/>
+    <text x="818" y="70" font-size="13" font-weight="650" fill="#24292f">runs.sqlite3</text>
+    <text x="818" y="87" font-size="11.5" fill="#57606a">every run: tokens, cost, latency, outcome</text>
+  </g>
+  <g>
+    <rect x="800" y="112" width="290" height="56" rx="10" fill="#effaf0" stroke="#a6d9ac"/>
+    <text x="818" y="136" font-size="13" font-weight="650" fill="#1a7f37">ledger.jsonl — hash-chained ⛓</text>
+    <text x="818" y="153" font-size="11.5" fill="#57606a">tamper-evident audit trail · audit verify</text>
+  </g>
+  <g>
+    <rect x="800" y="192" width="290" height="56" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+    <text x="818" y="216" font-size="13" font-weight="650" fill="#24292f">metrics — pure functions</text>
+    <text x="818" y="233" font-size="11.5" fill="#57606a">hours saved, adoption, net value, posture</text>
+  </g>
+  <g>
+    <rect x="800" y="258" width="290" height="56" rx="10" fill="#eef4fd" stroke="#2a78d6"/>
+    <text x="818" y="282" font-size="13" font-weight="650" fill="#1c5cab">report + dashboard.html</text>
+    <text x="818" y="299" font-size="11.5" fill="#57606a">the numbers the board asked for</text>
+  </g>
+
+  <path d="M730 130 H800 M730 140 Q770 140 786 158" fill="none" stroke="#57606a" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path d="M945 168 V192" fill="none" stroke="#57606a" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path d="M945 248 V258" fill="none" stroke="#2a78d6" stroke-width="1.6" marker-end="url(#arrowb)"/>
+
+  <!-- human feedback loop -->
+  <g>
+    <rect x="330" y="344" width="400" height="52" rx="10" fill="#fff8e6" stroke="#e8c465"/>
+    <text x="350" y="366" font-size="13" font-weight="650" fill="#24292f">human feedback — flightdeck feedback</text>
+    <text x="350" y="383" font-size="11.5" fill="#57606a">accepted / edited / rejected + minutes actually spent</text>
+  </g>
+  <path d="M730 370 Q790 370 830 320 M830 320 L828 322" fill="none" stroke="#57606a" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <text x="560" y="422" text-anchor="middle" font-size="12.5" font-style="italic" fill="#57606a">declared intent → governed execution → evidence → value you can defend in a board meeting</text>
+</svg>

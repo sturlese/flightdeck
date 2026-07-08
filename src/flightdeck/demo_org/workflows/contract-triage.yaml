@@ -1,0 +1,45 @@
+id: contract-triage
+name: Partner contract triage
+department: Legal
+owner: sara
+use_case: contract-triage
+description: >
+  Clause extraction and first-pass risk flags on inbound partner and platform
+  agreements. Confidential data: policy restricts it to EU-resident,
+  non-training models, and counsel reviews every output.
+data_classification: confidential
+tier: frontier
+review: human_in_the_loop
+
+baseline:
+  minutes_per_task: 50
+  tasks_per_month: 45
+  hourly_cost: 95
+
+steps:
+  - id: triage
+    vars: [contract_text]
+    max_output_tokens: 1200
+    prompt: |
+      You assist Meridian Interactive's legal team with contract triage.
+      This is decision support for a lawyer, not legal advice.
+
+      From the agreement below, extract into a table: parties, term and
+      renewal, territory, exclusivity, IP ownership and license grants,
+      revenue share and payment terms, termination rights, liability caps,
+      indemnities, data protection obligations, audit rights.
+
+      Then list the clauses that deviate from our standard positions
+      (rev-share above 30%, uncapped liability, perpetual licenses,
+      non-EU governing law, IP assignment of our engine or tools), quoting
+      the exact language. Flag anything unusual you cannot classify.
+
+      AGREEMENT:
+      {{contract_text}}
+
+guardrails:
+  redact_pii: true
+  monthly_budget: 200
+
+success:
+  acceptance_target: 0.85

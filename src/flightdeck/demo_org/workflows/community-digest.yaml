@@ -1,0 +1,38 @@
+id: community-digest
+name: Community sentiment digest
+department: Community
+owner: maya
+use_case: community-digests
+description: >
+  Summarizes a day of community channels (or a week of one title) into a
+  sentiment digest for the community and product teams. Runs unattended on a
+  schedule; declared review-free, so its savings model assumes no human pass.
+data_classification: public
+tier: fast
+review: none
+eligible_users: 1   # a scheduler service account, not the department
+
+baseline:
+  minutes_per_task: 20
+  tasks_per_month: 88
+
+steps:
+  - id: digest
+    vars: [channel_export, period]
+    max_output_tokens: 900
+    prompt: |
+      You produce Meridian Interactive's community sentiment digest.
+
+      Summarize the channel messages below for {{period}}. Structure:
+      1. Overall mood in one sentence.
+      2. Top 3 topics with representative (anonymized) quotes.
+      3. Emerging complaints or bugs the studio should know about.
+      4. One suggested action for the community team.
+      Do not invent topics; if the sample is too small, say so.
+
+      MESSAGES:
+      {{channel_export}}
+
+guardrails:
+  redact_pii: true
+  monthly_budget: 15
