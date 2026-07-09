@@ -191,13 +191,6 @@ pip install -e ".[anthropic]"   # Anthropic (ANTHROPIC_API_KEY) — or ".[openai
 Python 3.11+. Development: `make install test lint` — the suite is offline and fast, CI runs
 tests (85% coverage gate), ruff, and the full demo end-to-end.
 
-## Related
-
-Part of a family of AI-operations blueprints: [cortex](https://github.com/sturlese/cortex)
-(a verified company-brain pipeline — what the org *knows*) and
-[claude-squad](https://github.com/sturlese/claude-squad) (role-separated AI engineering —
-how the org *builds*). flightdeck is the third leg: whether the AI program is *worth it*.
-
 ## License
 
 MIT
