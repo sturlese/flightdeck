@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab.svg)](pyproject.toml)
 
-**The open-source flight deck for enterprise AI adoption — declare AI use cases as code, run
-them under policy, and prove the value with numbers a CFO can audit.**
+**A reference implementation for running enterprise AI adoption on evidence — use cases as
+code, governed runs, an auditable ROI trail.**
 
 Most AI programs can demo everything and prove nothing: pilots everywhere, a survey that says
 people "feel faster", and a token bill nobody can map to a business outcome. flightdeck is the

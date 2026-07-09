@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ai-flightdeck"
 version = "0.1.0"
-description = "The flight deck for enterprise AI adoption: declare AI use cases as code, run them under policy, and prove the value with an audit-grade ledger."
+description = "A reference implementation for running enterprise AI adoption on evidence: use cases as code, governed runs, an auditable ROI trail."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
