@@ -28,7 +28,7 @@ estimated by a model.
 ## Try it in 2 minutes (no API keys)
 
 ```bash
-pip install git+https://github.com/sturlese/flightdeck.git
+pipx install git+https://github.com/sturlese/flightdeck.git   # or pip install, inside a venv
 flightdeck demo
 ```
 
@@ -177,7 +177,11 @@ More in [docs/architecture.md](docs/architecture.md) · governance details in
 ## Install
 
 ```bash
-pip install git+https://github.com/sturlese/flightdeck.git   # core: offline mock, all commands
+pipx install git+https://github.com/sturlese/flightdeck.git   # CLI app, isolated env (recommended)
+
+# or with pip inside a virtualenv — required on Homebrew/Debian Pythons (PEP 668):
+python3 -m venv .venv && source .venv/bin/activate
+pip install git+https://github.com/sturlese/flightdeck.git
 
 # with a provider extra, from a clone:
 git clone https://github.com/sturlese/flightdeck.git && cd flightdeck
