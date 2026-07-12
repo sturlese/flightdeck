@@ -263,20 +263,23 @@ def apply_interaction(
     """Parse a Slack interaction and record it through the shared feedback path.
 
     An explicit ``minutes`` wins; otherwise a modal's minutes are used; otherwise
-    ``None`` (metrics fall back to ``org.config.default_review_minutes``). ``org``
-    is accepted for parity with the CLI and future directory resolution — today
-    ``by`` is simply the Slack user string. Raises ``SlackError`` on a bad payload
-    and ``FeedbackError`` (from ``record_feedback``) on an unknown run.
+    ``None`` (metrics fall back to ``org.config.default_review_minutes``). The
+    Slack user is resolved through the org directory exactly like the CLI's
+    reviewer — the stable id when the handle matches, the raw Slack string
+    otherwise — so one person clicking in Slack and typing in a terminal stays
+    ONE reviewer to the KPIs. Raises ``SlackError`` on a bad payload and
+    ``FeedbackError`` (from ``record_feedback``) on an unknown run.
     """
     parsed = parse_interaction(payload)
     effective_minutes = minutes if minutes is not None else parsed.minutes
+    resolved = org.directory.resolve(parsed.user)
     return record_feedback(
         store,
         ledger,
         parsed.run_id,
         parsed.outcome,
         human_minutes=effective_minutes,
-        by=parsed.user,
+        by=resolved.id if resolved is not None else parsed.user,
         note="via slack",
     )
 

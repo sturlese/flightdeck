@@ -30,7 +30,7 @@ from flightdeck.ledger import Ledger
 from flightdeck.runner import execute
 from flightdeck.schemas import Run
 from flightdeck.store import Store
-from tests.conftest import NOW
+from tests.conftest import NOW, write_org
 
 runner = CliRunner()
 
@@ -229,6 +229,39 @@ def test_apply_interaction_uses_modal_minutes(org, store, ledger):
     run = _seed_run(org, store, ledger)
     fb = apply_interaction(_view_submission_payload(run.id, "edited", minutes="9"), store, ledger, org)
     assert fb.outcome == "edited" and fb.human_minutes == 9.0
+
+
+def test_apply_interaction_resolves_reviewer_through_the_directory(tmp_path):
+    # A click by Slack handle and a CLI review by alias must land on the SAME
+    # stable id — one person, one reviewer to the KPIs (same rule as `flightdeck
+    # feedback`, which already resolves --by through the directory).
+    directory = {
+        "provider": "azure_ad",
+        "users": [
+            {
+                "id": "AAD-42", "display_name": "Ana García",
+                "email": "ana.garcia@example.com", "department": "Support",
+                "aliases": ["ana", "ana.g"],
+            }
+        ],
+    }
+    org = load_org(write_org(tmp_path / "org", directory=directory))
+    with Store(org.db_path) as store:
+        ledger = Ledger(org.ledger_path)
+        run = _seed_run(org, store, ledger)
+        payload = _button_payload(json.dumps({"run_id": run.id, "outcome": "accepted"}), user="ana.g")
+        fb = apply_interaction(payload, store, ledger, org)
+
+    assert fb.by == "AAD-42"  # the stable id, not the raw Slack handle
+    assert ledger.entries()[-1]["data"]["by"] == "AAD-42"
+
+
+def test_apply_interaction_keeps_unknown_reviewers_raw(org, store, ledger):
+    # No directory (or no match) → the raw Slack string, exactly as before.
+    run = _seed_run(org, store, ledger)
+    payload = _button_payload(json.dumps({"run_id": run.id, "outcome": "accepted"}), user="stranger")
+    fb = apply_interaction(payload, store, ledger, org)
+    assert fb.by == "stranger"
 
 
 # ------------------------------------------------------------------------ transport
