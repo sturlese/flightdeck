@@ -22,6 +22,18 @@ def test_credit_card_requires_luhn():
     assert "[REDACTED:card]" not in invalid.text
 
 
+def test_card_redaction_preserves_trailing_separator():
+    # The card token must not swallow the separator that belongs to the
+    # surrounding text, or the redaction merges into the next word.
+    assert redact("card 4111 1111 1111 1111 and b").text == "card [REDACTED:card] and b"
+
+
+def test_two_adjacent_cards_keep_their_separator():
+    result = redact("4111 1111 1111 1111 5500 0000 0000 0004")
+    assert result.by_kind["card"] == 2
+    assert result.text == "[REDACTED:card] [REDACTED:card]"
+
+
 def test_api_secret():
     result = redact("use key sk-abc123def456ghi789jkl012 for now")
     assert "[REDACTED:secret]" in result.text
