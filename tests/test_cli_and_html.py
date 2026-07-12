@@ -43,6 +43,45 @@ def test_init_refuses_to_overwrite(tmp_path):
     assert result.exit_code == 2
 
 
+def test_init_refuses_any_existing_org_file_and_writes_nothing(tmp_path):
+    # models.yaml alone (no flightdeck.yaml) used to be silently overwritten.
+    root = tmp_path / "org"
+    root.mkdir()
+    (root / "models.yaml").write_text("models: my own\n", encoding="utf-8")
+
+    result = invoke("init", "--dir", str(root))
+    assert result.exit_code == 2
+    assert "models.yaml" in result.output
+    assert (root / "models.yaml").read_text(encoding="utf-8") == "models: my own\n"
+    assert not (root / "flightdeck.yaml").exists()  # refused before writing anything
+
+
+def test_init_appends_to_an_existing_gitignore(tmp_path):
+    # A project's .gitignore predates flightdeck: append the rule, never clobber.
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".gitignore").write_text("node_modules/\n*.log", encoding="utf-8")  # no trailing \n
+
+    result = invoke("init", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "node_modules/" in lines  # the project's own rules survive
+    assert "*.log" in lines  # last line intact, not glued to the appended block
+    assert ".flightdeck/" in lines
+
+
+def test_init_does_not_duplicate_an_existing_flightdeck_rule(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".gitignore").write_text("custom\n.flightdeck/\n", encoding="utf-8")
+
+    result = invoke("init", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+    text = (root / ".gitignore").read_text(encoding="utf-8")
+    assert text.splitlines().count(".flightdeck/") == 1
+    assert text.startswith("custom\n")
+
+
 def test_demo_refuses_a_real_org_with_exit_2(tmp_path):
     root = _init(tmp_path)
     result = invoke("demo", "--dir", str(root))

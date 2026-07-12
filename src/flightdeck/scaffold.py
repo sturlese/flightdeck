@@ -133,5 +133,6 @@ success:
 """
 
 GITIGNORE = """\
+# flightdeck runtime state — never commit an org's evidence (store + ledger)
 .flightdeck/
 """

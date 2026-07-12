@@ -84,19 +84,42 @@ def _main(
         raise typer.Exit()
 
 
+def _ensure_gitignore(dir: Path) -> None:
+    """Keep runtime state out of version control WITHOUT clobbering an existing
+    file — a project's .gitignore usually predates flightdeck. Appends the rule
+    when the file exists, writes the starter when it doesn't, never duplicates."""
+    path = dir / ".gitignore"
+    if not path.exists():
+        path.write_text(scaffold.GITIGNORE, encoding="utf-8")
+        return
+    text = path.read_text(encoding="utf-8")
+    if ".flightdeck/" in text.splitlines():
+        return
+    separator = "" if not text or text.endswith("\n") else "\n"
+    path.write_text(text + separator + scaffold.GITIGNORE, encoding="utf-8")
+
+
 @app.command()
 def init(dir: DirOption = Path(".")) -> None:
     """Scaffold a starter org: config, model registry, one use case, one workflow."""
     dir.mkdir(parents=True, exist_ok=True)
-    if (dir / "flightdeck.yaml").exists():
-        err.print(f"[red]refusing to overwrite:[/red] {dir / 'flightdeck.yaml'} already exists")
+    targets: dict[Path, str] = {
+        dir / "flightdeck.yaml": scaffold.ORG,
+        dir / "models.yaml": scaffold.MODELS,
+        dir / "usecases.yaml": scaffold.USECASES,
+        dir / "workflows" / "meeting-minutes.yaml": scaffold.WORKFLOW,
+    }
+    # Refuse if ANY target exists — not just flightdeck.yaml. Running init in the
+    # wrong directory must never eat a file, and a partial scaffold helps nobody.
+    existing = [path for path in targets if path.exists()]
+    if existing:
+        listing = ", ".join(str(path) for path in existing)
+        err.print(f"[red]refusing to overwrite:[/red] {listing} already there — pick another --dir")
         raise typer.Exit(2)
-    (dir / "flightdeck.yaml").write_text(scaffold.ORG, encoding="utf-8")
-    (dir / "models.yaml").write_text(scaffold.MODELS, encoding="utf-8")
-    (dir / "usecases.yaml").write_text(scaffold.USECASES, encoding="utf-8")
-    (dir / "workflows").mkdir(exist_ok=True)
-    (dir / "workflows" / "meeting-minutes.yaml").write_text(scaffold.WORKFLOW, encoding="utf-8")
-    (dir / ".gitignore").write_text(scaffold.GITIGNORE, encoding="utf-8")
+    for path, content in targets.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    _ensure_gitignore(dir)
     console.print(f"[green]✓[/green] org scaffolded in [bold]{dir}[/bold] — the files are meant to be edited")
     console.print("  try it offline:  [bold]flightdeck run meeting-minutes --var notes='...'[/bold]")
     console.print("  then:            [bold]flightdeck report[/bold]")
