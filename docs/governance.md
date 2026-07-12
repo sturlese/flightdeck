@@ -108,8 +108,9 @@ click back into the same measurement `flightdeck feedback` records.
 - **One feedback path.** The CLI command and the Slack handler both call a single
   `record_feedback(...)` function, so a button click lands the *identical* store row and the
   *identical* `feedback_recorded` ledger event (`{run_id, outcome, human_minutes, by}`) — the
-  Slack `by` is the reviewer's Slack handle, with a `via slack` note on the store row for
-  provenance. There is no second, weaker feedback API to keep in sync.
+  Slack `by` is resolved through the org directory exactly like the CLI reviewer (the stable
+  id when the handle matches, the raw Slack handle otherwise), with a `via slack` note on the
+  store row for provenance. There is no second, weaker feedback API to keep in sync.
 - **Offline-first, no new dependency.** `flightdeck slack post <run_id>` renders a Slack Block
   Kit message and, by default, **prints the JSON** — fully demoable and pipeable to any poster.
   Only when `FLIGHTDECK_SLACK_WEBHOOK` is set does it actually POST, via stdlib `urllib`
