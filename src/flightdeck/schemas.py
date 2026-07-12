@@ -22,6 +22,7 @@ lenient on economics (any positive number is a legal baseline — realism is the
 operator's job, arithmetic is ours).
 """
 
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -113,8 +114,24 @@ def default_data_rules() -> dict[str, DataRule]:
 class PolicyConfig(StrictModel):
     data_rules: dict[DataClass, DataRule] = Field(default_factory=default_data_rules)
     redact_pii_default: bool = True
+    #: Org-specific redaction regexes (employee ids, customer codes …), applied on
+    #: top of the built-in PII patterns whenever a workflow redacts. Hits are
+    #: counted on the run like every built-in pattern's.
+    redact_patterns: list[str] = Field(default_factory=list)
     #: Applied to every workflow that does not set its own cap. None = uncapped.
     default_monthly_budget: float | None = None
+
+    @field_validator("redact_patterns")
+    @classmethod
+    def _patterns_must_compile(cls, patterns: list[str]) -> list[str]:
+        # Validated at load so a bad regex is a loud config error naming the org
+        # file — never a runtime crash inside the redactor, mid-run.
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                raise ValueError(f"invalid regex {pattern!r}: {exc}") from None
+        return patterns
 
     @model_validator(mode="after")
     def _fill_missing_classes(self) -> "PolicyConfig":

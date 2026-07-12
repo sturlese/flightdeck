@@ -93,6 +93,26 @@ def test_empty_model_registry_fails(tmp_path):
         load_org(root)
 
 
+def test_invalid_redact_pattern_is_a_loud_config_error(tmp_path):
+    # A bad regex must fail at LOAD, naming the org file and the pattern — never
+    # at run time, inside the redactor, mid-run.
+    org = dict(ORG)
+    org["policy"] = {"redact_patterns": ["[unclosed"]}
+    with pytest.raises(ConfigError, match=r"flightdeck\.yaml") as excinfo:
+        load_org(write_org(tmp_path / "org", org=org))
+    assert "[unclosed" in str(excinfo.value)
+
+
+def test_redact_patterns_load_and_default_empty(tmp_path):
+    org = dict(ORG)
+    org["policy"] = {"redact_patterns": [r"\bEMP-\d{5}\b"]}
+    loaded = load_org(write_org(tmp_path / "org", org=org))
+    assert loaded.config.policy.redact_patterns == [r"\bEMP-\d{5}\b"]
+    # Absent block → empty list, so redaction behavior is unchanged for old orgs.
+    plain = load_org(write_org(tmp_path / "plain"))
+    assert plain.config.policy.redact_patterns == []
+
+
 def test_partial_data_rules_keep_conservative_defaults(tmp_path):
     org = dict(ORG)
     org["policy"] = {"data_rules": {"restricted": {"models": ["mock-frontier-eu"]}}}

@@ -55,6 +55,29 @@ def test_variables_are_redacted_before_leaving(org, store, ledger):
     assert "[REDACTED:email]" in run.output
 
 
+def test_org_redact_patterns_scrub_custom_identifiers(tmp_path):
+    # flightdeck.yaml → policy.redact_patterns rides the same gate as the built-in
+    # PII patterns: applied to variables, counted on the run.
+    from flightdeck.config import load_org
+    from flightdeck.ledger import Ledger
+    from flightdeck.store import Store
+    from tests.conftest import ORG, write_org
+
+    org_cfg = dict(ORG)
+    org_cfg["policy"] = {"redact_patterns": [r"\bEMP-\d{5}\b"]}
+    org = load_org(write_org(tmp_path / "org", org=org_cfg))
+    with Store(org.db_path) as store:
+        ledger = Ledger(org.ledger_path)
+        run = execute(
+            org, org.workflows["support-reply"], {"ticket": "employee EMP-00423 asked twice"},
+            "ana", store, ledger, provider=EchoProvider(), now=NOW,
+        )
+
+    assert "EMP-00423" not in run.output
+    assert "[REDACTED:custom0]" in run.output
+    assert run.redactions == 1
+
+
 def test_prompt_scaffolding_is_not_redacted(org, store, ledger):
     # The scaffolding may legitimately mention e.g. a support address; only pasted
     # variables are scrubbed.

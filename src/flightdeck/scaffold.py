@@ -21,6 +21,10 @@ departments:
 
 policy:
   redact_pii_default: true
+  # Org-specific redactions, applied on top of the built-in PII patterns
+  # (emails, phones, IBANs, cards, api keys). Quote regexes in single quotes.
+  # redact_patterns:
+  #   - '\\bEMP-\\d{5}\\b'        # e.g. employee ids
   data_rules:
     # Defaults are conservative: anything beyond `public` never reaches a vendor
     # that trains on your data, and `restricted` fails closed until you list

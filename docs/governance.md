@@ -68,7 +68,9 @@ exit code.
 ## Redaction: a seatbelt, not a DLP suite
 
 Deterministic regex patterns (emails, phones with E.164 digit-count checks, IBANs,
-Luhn-validated card numbers, API-key shapes, Spanish DNI) plus org-specific patterns. Design
+Luhn-validated card numbers, API-key shapes, Spanish DNI) plus org-specific patterns
+declared in `flightdeck.yaml → policy.redact_patterns` (a list of regexes, validated at
+load; hits are counted on the run like the built-ins'). Design
 bias: **precision over recall** — a redactor that mangles half the prompt gets switched off by
 annoyed users, which protects nobody. It will not catch free-text PII ("my neighbour Marta from
 the 3rd floor"), and it does not try. If your data demands semantic PII detection, put a
