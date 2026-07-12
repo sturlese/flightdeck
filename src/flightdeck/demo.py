@@ -30,6 +30,7 @@ import yaml
 
 from flightdeck.config import load_org
 from flightdeck.ledger import Ledger
+from flightdeck.policy import BUDGET_BLOCK_PREFIX
 from flightdeck.runner import record  # the same evidence path real runs take
 from flightdeck.schemas import Feedback, Run
 from flightdeck.store import Store
@@ -224,7 +225,7 @@ def seed(target: Path | str, weeks: int = WEEKS, rng_seed: int = SEED) -> DemoSu
             run = Run(
                 id=run_id, workflow_id=workflow.id, user=user, started_at=when,
                 finished_at=when, status="blocked",
-                reason=f"monthly budget exhausted: {_spend(workflow.id, when):.2f} "
+                reason=f"{BUDGET_BLOCK_PREFIX}: {_spend(workflow.id, when):.2f} "
                 f"of {cap:.2f} {org.config.currency} committed",
             )
             events.append((when, run))

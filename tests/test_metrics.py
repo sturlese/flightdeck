@@ -143,6 +143,20 @@ class TestBuildReport:
         assert gov.blocked_policy == gov.blocked_policy_all == 1
         assert gov.failed == 1
 
+    def test_policy_block_mentioning_budget_is_not_a_budget_block(self, org, store, ledger):
+        # Classification keys on the budget gate's message PREFIX, not on the word
+        # "budget" appearing anywhere — a policy refusal that happens to mention a
+        # budget-ish workflow or model name must not shift the governance counters.
+        when = NOW - timedelta(days=1)
+        store.add_run(_run(
+            "pol-b", when, status="blocked", model_id="", cost=0,
+            reason="no policy-compliant model available in tier 'fast' or above "
+                   "(0 model(s) cleared by data policy) for 'budget-forecasting'",
+        ))
+        gov = build_report(org, store, ledger, days=30, now=NOW).governance
+        assert gov.blocked_policy == gov.blocked_policy_all == 1
+        assert gov.blocked_budget == gov.blocked_budget_all == 0
+
     def test_health_flags_the_underperformer(self, seeded):
         # acceptance 0.67 vs target 0.80 and ~1.5 weekly actives vs target 6 → worst
         # ratio far below 0.75.

@@ -22,11 +22,23 @@ from flightdeck.config import Org
 from flightdeck.schemas import ModelSpec, Workflow
 from flightdeck.store import Store
 
+#: Every budget-gate refusal starts with this prefix. It is the one string the
+#: rest of the system may rely on to classify a blocked run (see is_budget_block) —
+#: metrics and the demo seeder import it instead of pattern-matching prose.
+BUDGET_BLOCK_PREFIX = "monthly budget exhausted"
+
 
 @dataclass
 class PolicyDecision:
     allowed: bool
     reason: str = ""
+
+
+def is_budget_block(reason: str | None) -> bool:
+    """Classify a blocked run's recorded reason: budget gate vs. data-policy gate.
+    Lives next to check_budget so the message and its classifier can only change
+    together."""
+    return bool(reason) and reason.startswith(BUDGET_BLOCK_PREFIX)
 
 
 def allowed_models(org: Org, workflow: Workflow) -> list[ModelSpec]:
@@ -46,7 +58,7 @@ def check_budget(org: Org, workflow: Workflow, store: Store, year: int, month: i
     if spent >= cap:
         return PolicyDecision(
             False,
-            f"monthly budget exhausted: {spent:.2f} of {cap:.2f} {org.config.currency} committed",
+            f"{BUDGET_BLOCK_PREFIX}: {spent:.2f} of {cap:.2f} {org.config.currency} committed",
         )
     return PolicyDecision(True)
 
