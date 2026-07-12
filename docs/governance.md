@@ -43,6 +43,28 @@ keeps the conservative defaults for every other class.
 Blocked and failed runs land in the store *and* the ledger with their reason — the program
 learns as much from its refusals as from its successes.
 
+## Scheduled runs (`schedule:` + `flightdeck tick`)
+
+A review-free workflow (`review: none`) may declare a `schedule:` block — a `cadence`
+(`daily` / `weekly` / `monthly`) and the `vars` its steps need (there is no human to pass
+`--var` to a digest bot). A schedule on a human-reviewed workflow is a **loud config error**:
+scheduling means running unattended, and silently dropping the review is exactly the kind of
+governance typo strict schemas exist to reject.
+
+flightdeck does **not** reimplement cron. An external scheduler (cron, a CI job) invokes
+`flightdeck tick` as often as it likes; `tick` runs each due workflow **at most once per
+cadence period**. Due-ness is a *calendar period*, not a rolling window: a daily workflow is
+due unless some run already started today, weekly unless one started this ISO week, monthly
+unless one started this month. Crucially, **any** run in the period counts — completed,
+blocked *or* failed — so a budget-blocked attempt still spends the period. That is what makes
+the week-9 runaway-bot scenario impossible by construction: even 300 `tick` calls in an hour
+run a daily digest exactly once that day, and every later call sees the period spent and skips
+it. Scheduled runs are attributed to the `scheduler` service account, pass through the same
+gates, and land in the store and ledger as `run_completed` / `run_blocked` / `run_failed` like
+any other run. `tick` is a batch: it exits 0 even when some runs block (an expected governance
+signal), reserving non-zero for usage/config errors — cron alerts on the ledger, not the
+exit code.
+
 ## Redaction: a seatbelt, not a DLP suite
 
 Deterministic regex patterns (emails, phones with E.164 digit-count checks, IBANs,

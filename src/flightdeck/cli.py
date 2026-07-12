@@ -14,7 +14,7 @@ import getpass
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -38,11 +38,16 @@ from flightdeck.report import html as html_report
 from flightdeck.report.html import money
 from flightdeck.router import NoRouteError, pick
 from flightdeck.runner import VariableError, execute, required_vars
+from flightdeck.scheduler import is_due, last_run_started_at
 from flightdeck.store import Store
 
 #: Optional: set to a Slack incoming-webhook URL to make `slack post` actually
 #: POST. Unset (the default) keeps `slack post` offline — it prints the JSON.
 SLACK_WEBHOOK_ENV = "FLIGHTDECK_SLACK_WEBHOOK"
+
+#: Runs launched by `flightdeck tick` are attributed to this service account, so
+#: the ledger distinguishes scheduled runs from human-initiated ones.
+SCHEDULER_USER = "scheduler"
 
 app = typer.Typer(
     add_completion=False,
@@ -261,6 +266,70 @@ def run(
         console.print(f"  {result.reason}")
         console.print("  [dim]the attempt is recorded in the store and the audit ledger[/dim]")
         raise typer.Exit(1)
+
+
+@app.command()
+def tick(
+    dir: DirOption = Path("."),
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Show what would run without running it.")
+    ] = False,
+) -> None:
+    """Run every scheduled review-free workflow that is due, at most once per period.
+
+    Meant for cron/CI to invoke as often as it likes: due-ness is a CALENDAR
+    PERIOD (daily/weekly/monthly), so a workflow that already ran this period is
+    skipped. Even a budget-blocked attempt consumes the period — that is what
+    makes a retry storm impossible by construction.
+
+    Exit code is 0 even when runs block or fail: tick is a batch, and a budget
+    block is an EXPECTED governance signal, not a failure of the batch (unlike
+    `run`, which exits 1 on a block). Only usage/config errors exit 2.
+    """
+    org = _org(dir)
+    scheduled = sorted(
+        (workflow for workflow in org.workflows.values() if workflow.schedule is not None),
+        key=lambda workflow: workflow.id,
+    )
+    if not scheduled:
+        console.print(
+            "[dim]no scheduled workflows — add a [bold]schedule:[/bold] block to a "
+            "[bold]review: none[/bold] workflow, then cron this command[/dim]"
+        )
+        return
+
+    now = datetime.now(UTC)
+    with Store(org.db_path) as store:
+        ledger = Ledger(org.ledger_path)
+        for workflow in scheduled:
+            schedule = workflow.schedule  # never None here (filtered) and guaranteed review == "none"
+            cadence = schedule.cadence
+            if not is_due(cadence, last_run_started_at(store, workflow.id), now):
+                console.print(f"[dim]· {workflow.id}: skipped (not due this {cadence})[/dim]")
+                continue
+            if dry_run:
+                console.print(f"· {workflow.id}: [bold]would run[/bold] ({cadence})")
+                continue
+            try:
+                result = execute(org, workflow, schedule.vars, SCHEDULER_USER, store, ledger, now=now)
+            except VariableError as exc:
+                err.print(
+                    f"[red]config error:[/red] {workflow.id}: {exc} — declare them under "
+                    f"[bold]schedule.vars[/bold] (needs: {', '.join(required_vars(workflow))})"
+                )
+                raise typer.Exit(2) from None
+            if result.status == "completed":
+                console.print(
+                    f"[green]✓ {workflow.id}: ran[/green] ({cadence}) · {result.model_id} "
+                    f"· {money(result.cost, org.config.currency)} · run {result.id}"
+                )
+            elif result.status == "blocked":
+                console.print(
+                    f"[yellow]✕ {workflow.id}: blocked[/yellow] ({cadence}) · {result.reason} "
+                    "[dim](the period is spent; tick will not retry until next period)[/dim]"
+                )
+            else:
+                console.print(f"[red]✕ {workflow.id}: failed[/red] ({cadence}) · {result.reason}")
 
 
 @app.command()
