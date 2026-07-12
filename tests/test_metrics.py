@@ -126,6 +126,23 @@ class TestBuildReport:
         assert gov.no_training_share == 1.0
         assert gov.ledger_ok and gov.ledger_entries == 1
 
+    def test_window_governance_counts_orphaned_workflow_incidents(self, org, store, ledger):
+        # A workflow deleted from config leaves its historical runs behind. In-window
+        # governance incidents for it still belong in the window rollup — the all-time
+        # counters already include them, so the window counters must too.
+        when = NOW - timedelta(days=1)
+        store.add_run(_run("gb", when, workflow_id="deleted-wf", status="blocked",
+                           reason="monthly budget exhausted", model_id="", cost=0))
+        store.add_run(_run("gp", when, workflow_id="deleted-wf", status="blocked",
+                           reason="no policy-compliant model", model_id="", cost=0))
+        store.add_run(_run("gf", when, workflow_id="deleted-wf", status="failed",
+                           reason="provider: timeout", model_id="", cost=0))
+        gov = build_report(org, store, ledger, days=30, now=NOW).governance
+        # Window counters now match the all-time counters for these in-window incidents.
+        assert gov.blocked_budget == gov.blocked_budget_all == 1
+        assert gov.blocked_policy == gov.blocked_policy_all == 1
+        assert gov.failed == 1
+
     def test_health_flags_the_underperformer(self, seeded):
         # acceptance 0.67 vs target 0.80 and ~1.5 weekly actives vs target 6 → worst
         # ratio far below 0.75.

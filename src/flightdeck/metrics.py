@@ -321,6 +321,22 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
         entry.health = _health(workflow, entry)
         report.workflows.append(entry)
 
+    # Governance incidents for a workflow since deleted from config still belong in
+    # the window rollup: the all-time counters already include them, so the window
+    # counters must too (they have no per-workflow row to be counted under). Runs of
+    # known workflows were already tallied in the loop above, so this pass is disjoint.
+    known_workflows = set(org.workflows)
+    for run in window_runs:
+        if run.workflow_id in known_workflows:
+            continue
+        if run.status == "blocked":
+            if "budget" in (run.reason or ""):
+                report.governance.blocked_budget += 1
+            else:
+                report.governance.blocked_policy += 1
+        elif run.status == "failed":
+            report.governance.failed += 1
+
     completed = [run for run in window_runs if run.status == "completed"]
     if completed:
         no_training = sum(
