@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from flightdeck.policy import allowed_models, check_budget, should_redact
+from flightdeck.policy import allowed_models, check_budget, is_budget_block, should_redact
 from flightdeck.router import NoRouteError, pick
 from flightdeck.schemas import Run
 from tests.conftest import NOW
@@ -60,7 +60,18 @@ def test_budget_gate_blocks_once_cap_is_committed(org, store):
     store.add_run(_run(2.0, NOW))
     decision = check_budget(org, workflow, store, NOW.year, NOW.month)
     assert not decision.allowed
-    assert "budget" in decision.reason
+    assert is_budget_block(decision.reason)  # the gate's message and its classifier agree
+
+
+def test_is_budget_block_ignores_budget_prose_elsewhere(org):
+    # The router's fail-closed message classifies as a POLICY block even when the
+    # tier/model/workflow prose happens to contain the word "budget".
+    with pytest.raises(NoRouteError) as excinfo:
+        pick([], "frontier")
+    assert not is_budget_block(str(excinfo.value))
+    assert not is_budget_block("no policy-compliant model for 'budget-forecasting'")
+    assert not is_budget_block(None)
+    assert not is_budget_block("")
 
 
 def test_budget_gate_ignores_other_months(org, store):

@@ -23,6 +23,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from flightdeck.config import Org
 from flightdeck.ledger import Ledger
+from flightdeck.policy import is_budget_block
 from flightdeck.schemas import Feedback, Run, Workflow
 from flightdeck.store import Store
 
@@ -231,7 +232,7 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
         point = weekly.setdefault(week_label, WeeklyPoint(week=week_label, start=week_start))
         point.cost += run.cost
         if run.status == "blocked":
-            if "budget" in (run.reason or ""):
+            if is_budget_block(run.reason):
                 report.governance.blocked_budget_all += 1
             else:
                 report.governance.blocked_policy_all += 1
@@ -270,7 +271,7 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
             entry.redactions += run.redactions
             if run.status == "blocked":
                 entry.runs_blocked += 1
-                if "budget" in (run.reason or ""):
+                if is_budget_block(run.reason):
                     report.governance.blocked_budget += 1
                 else:
                     report.governance.blocked_policy += 1
@@ -330,7 +331,7 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
         if run.workflow_id in known_workflows:
             continue
         if run.status == "blocked":
-            if "budget" in (run.reason or ""):
+            if is_budget_block(run.reason):
                 report.governance.blocked_budget += 1
             else:
                 report.governance.blocked_policy += 1
