@@ -499,7 +499,10 @@ def policy_check(
     console.print(f"  PII redaction: {'[bold]on[/bold]' if should_redact(org, workflow) else 'off'}")
     cap = workflow.guardrails.monthly_budget or org.config.policy.default_monthly_budget
     if cap is not None:
-        now = datetime.now().astimezone()
+        # Same clock as the runner's budget gate (execute() stamps runs with
+        # datetime.now(UTC)): the budget month is a UTC month, so the dry-run and
+        # the real gate agree even when the local month has already rolled over.
+        now = datetime.now(UTC)
         with Store(org.db_path) as store:
             decision = check_budget(org, workflow, store, now.year, now.month)
             spent = store.month_cost(workflow.id, now.year, now.month)
