@@ -51,3 +51,13 @@ def test_record_feedback_rejects_unknown_outcome(org, store, ledger):
 def test_record_feedback_rejects_unknown_run(org, store, ledger):
     with pytest.raises(FeedbackError, match="unknown run"):
         record_feedback(store, ledger, "does-not-exist", "accepted")
+
+
+@pytest.mark.parametrize("bad", [-5.0, float("nan"), float("inf")])
+def test_record_feedback_rejects_negative_or_non_finite_minutes(org, store, ledger, bad):
+    # Review time can't be negative or non-finite; the guard must be a clean
+    # FeedbackError, not a pydantic ValidationError leaking past the caller's
+    # exit-code handling.
+    run = _seed_run(org, store, ledger)
+    with pytest.raises(FeedbackError, match="non-negative number"):
+        record_feedback(store, ledger, run.id, "accepted", human_minutes=bad)
