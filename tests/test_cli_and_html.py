@@ -161,6 +161,32 @@ def test_promote_scaffolds_a_loadable_workflow(tmp_path):
     assert result.exit_code == 2  # never overwrite
 
 
+def test_promote_quotes_yaml_hostile_freetext(tmp_path):
+    # A use case whose name/department/description contain YAML metacharacters must
+    # still scaffold a LOADABLE workflow — the fields are quoted, not interpolated
+    # raw (else "Ops: EU" breaks the document and "Bug #42" is eaten as a comment).
+    root = _init(tmp_path)
+    usecases = yaml.safe_load((root / "usecases.yaml").read_text())
+    usecases["usecases"].append(
+        {
+            "id": "ticket-routing", "name": "Bug #42\ntriage", "department": "Ops: EU",
+            "description": "Route tickets: fast and safe",
+            "task_minutes": 6, "tasks_per_month": 300, "automation_potential": 0.7,
+            "data_readiness": 3, "process_stability": 4, "risk": 2, "effort_weeks": 1,
+        }
+    )
+    (root / "usecases.yaml").write_text(yaml.safe_dump(usecases))
+
+    result = invoke("promote", "ticket-routing", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+    org = load_org(root)  # currently raises ConfigError (invalid YAML) before the fix
+    workflow = org.workflows["ticket-routing"]
+    # A "#" (comment), a ":" (mapping) and a newline (block-scalar break) all survive.
+    assert workflow.name == "Bug #42\ntriage"  # not silently truncated to "Bug"
+    assert workflow.department == "Ops: EU"  # colon didn't break the mapping
+    assert workflow.description == "Route tickets: fast and safe"
+
+
 def test_backlog_command_ranks(tmp_path):
     root = _init(tmp_path)
     result = invoke("backlog", "--dir", str(root))
