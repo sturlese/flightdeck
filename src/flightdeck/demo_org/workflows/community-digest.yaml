@@ -36,3 +36,12 @@ steps:
 guardrails:
   redact_pii: true
   monthly_budget: 15
+
+# Runs unattended, once per day, driven by `flightdeck tick` (cron/CI invokes it;
+# tick enforces at-most-once-per-day, so a retry storm can never run it twice).
+# Review-free, so the inputs a human would pass with --var are declared here.
+schedule:
+  cadence: daily
+  vars:
+    period: the last 24 hours
+    channel_export: "(supplied at run time by the community channel-export connector)"

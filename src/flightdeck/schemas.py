@@ -32,6 +32,10 @@ Tier = Literal["fast", "balanced", "frontier"]
 Outcome = Literal["accepted", "edited", "rejected"]
 ReviewMode = Literal["human_in_the_loop", "spot_check", "none"]
 RunStatus = Literal["completed", "blocked", "failed"]
+#: How often a review-free workflow is due to run under `flightdeck tick`. A
+#: calendar period, not a cron expression: flightdeck decides due-ness, an
+#: external scheduler decides how often to ask (see scheduler.py).
+Cadence = Literal["daily", "weekly", "monthly"]
 
 SLUG = r"^[a-z0-9][a-z0-9_-]*$"
 
@@ -201,6 +205,18 @@ class Step(StrictModel):
     max_output_tokens: int = Field(default=1024, gt=0)
 
 
+class Schedule(StrictModel):
+    """Declares that a review-free workflow should run on a cadence, driven by
+    `flightdeck tick`. A digest bot has no human to pass `--var`, so the inputs
+    it needs are declared here in the spec — governance in version control, like
+    everything else. Deliberately NOT a cron parser: the cadence is a calendar
+    period and idempotency does the rest (see scheduler.py)."""
+
+    cadence: Cadence
+    #: The variable values the scheduled run feeds its steps (name → value).
+    vars: dict[str, str] = Field(default_factory=dict)
+
+
 class Workflow(StrictModel):
     """A promoted use case: executable steps plus the governance and measurement
     facts that make the runs comparable and the value claim auditable."""
@@ -220,6 +236,8 @@ class Workflow(StrictModel):
     steps: list[Step] = Field(min_length=1)
     guardrails: Guardrails = Field(default_factory=Guardrails)
     success: SuccessCriteria = Field(default_factory=SuccessCriteria)
+    #: Unattended cadence for review-free workflows only (see the validator).
+    schedule: Schedule | None = None
 
     @field_validator("steps")
     @classmethod
@@ -228,6 +246,18 @@ class Workflow(StrictModel):
         if len(ids) != len(set(ids)):
             raise ValueError("step ids must be unique within a workflow")
         return steps
+
+    @model_validator(mode="after")
+    def _schedule_requires_review_none(self) -> "Workflow":
+        # Scheduling means running with no human in the loop. Putting a schedule on
+        # a human-reviewed workflow would silently drop the review — a governance
+        # typo must fail loudly, not un-govern the workflow.
+        if self.schedule is not None and self.review != "none":
+            raise ValueError(
+                "schedule requires review: none — a scheduled workflow runs unattended, "
+                f"but '{self.id}' declares review: {self.review}"
+            )
+        return self
 
 
 # --------------------------------------------------------------------------- evidence
