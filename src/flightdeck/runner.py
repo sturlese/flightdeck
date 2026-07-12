@@ -156,11 +156,19 @@ def execute(
             tokens_out += completion.tokens_out
             output = completion.text
             context[f"steps.{step.id}"] = completion.text
-    except ProviderError as exc:
+    except VariableError:
+        raise  # a user/config error (undeclared template var), not a vendor failure
+    except Exception as exc:
+        # ProviderError is the adapter contract, but an adapter BUG (unexpected
+        # SDK response shape, client construction failure) must also land in the
+        # evidence — the invariant is that every path is recorded, and under
+        # `tick` an uncaught crash would starve the rest of the batch. The
+        # exception type is kept in the reason so a defect reads as a defect.
         latency_ms = int((time.perf_counter() - clock) * 1000)
+        reason = str(exc) if isinstance(exc, ProviderError) else f"unexpected {type(exc).__name__}: {exc}"
         return _terminal(
             "failed",
-            str(exc),
+            reason,
             model_id=spec.id,
             provider=spec.provider,
             tokens_in=tokens_in,
