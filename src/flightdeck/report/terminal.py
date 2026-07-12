@@ -14,8 +14,12 @@ _HEALTH_STYLE = {"good": "green", "warn": "yellow", "crit": "red", "muted": "dim
 
 
 def _spark(values: list[float]) -> str:
-    top = max(values) or 1
-    return "".join(_SPARK[min(int(v / top * 7.999), 7)] for v in values)
+    # hours_saved can be negative (a rejection-heavy week earns negative minutes),
+    # so scale off a non-negative top and clamp the glyph index to [0, 7]: a
+    # negative value floors to the lowest bar instead of a wrong glyph or an
+    # IndexError from negative indexing.
+    top = max(max(values), 0.0) or 1.0
+    return "".join(_SPARK[min(max(int(v / top * 7.999), 0), 7)] for v in values)
 
 
 def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) -> None:
