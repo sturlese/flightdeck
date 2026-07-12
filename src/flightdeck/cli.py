@@ -12,6 +12,8 @@ chain) · 2 configuration or usage error — scriptable from CI and cron by desi
 import dataclasses
 import getpass
 import json
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -25,6 +27,9 @@ from flightdeck import __version__, scaffold
 from flightdeck import backlog as backlog_mod
 from flightdeck.config import ConfigError, Org, load_org
 from flightdeck.demo import seed
+from flightdeck.feedback import FeedbackError, record_feedback
+from flightdeck.integrations import slack
+from flightdeck.integrations.slack import SlackError
 from flightdeck.ledger import Ledger
 from flightdeck.metrics import build_report
 from flightdeck.policy import allowed_models, check_budget, should_redact
@@ -33,8 +38,11 @@ from flightdeck.report import terminal
 from flightdeck.report.html import money
 from flightdeck.router import NoRouteError, pick
 from flightdeck.runner import VariableError, execute, required_vars
-from flightdeck.schemas import Feedback
 from flightdeck.store import Store
+
+#: Optional: set to a Slack incoming-webhook URL to make `slack post` actually
+#: POST. Unset (the default) keeps `slack post` offline — it prints the JSON.
+SLACK_WEBHOOK_ENV = "FLIGHTDECK_SLACK_WEBHOOK"
 
 app = typer.Typer(
     add_completion=False,
@@ -43,6 +51,8 @@ app = typer.Typer(
 )
 audit_app = typer.Typer(help="Audit-ledger operations.")
 app.add_typer(audit_app, name="audit")
+slack_app = typer.Typer(help="Post runs to Slack and capture Accept/Edited/Reject feedback.")
+app.add_typer(slack_app, name="slack")
 
 console = Console()
 err = Console(stderr=True)
@@ -264,22 +274,15 @@ def feedback(
 ) -> None:
     """Record what a human did with a run's output — the ROI numbers feed on this."""
     org = _org(dir)
-    if outcome not in ("accepted", "edited", "rejected"):
-        err.print("[red]outcome must be one of:[/red] accepted, edited, rejected")
-        raise typer.Exit(2)
     with Store(org.db_path) as store:
-        if store.run(run_id) is None:
-            err.print(f"[red]unknown run:[/red] {run_id}")
-            raise typer.Exit(2)
-        entry = Feedback(
-            run_id=run_id, outcome=outcome, human_minutes=minutes,  # type: ignore[arg-type]
-            by=by or getpass.getuser(), note=note, at=datetime.now().astimezone(),
-        )
-        store.add_feedback(entry)
-        Ledger(org.ledger_path).append(
-            "feedback_recorded",
-            {"run_id": run_id, "outcome": outcome, "human_minutes": minutes, "by": entry.by},
-        )
+        try:
+            record_feedback(
+                store, Ledger(org.ledger_path), run_id, outcome,
+                human_minutes=minutes, by=by or getpass.getuser(), note=note,
+            )
+        except FeedbackError as exc:
+            err.print(f"[red]{exc}[/red]")
+            raise typer.Exit(2) from None
     console.print(
         f"[green]✓[/green] recorded: {run_id} → [bold]{outcome}[/bold]"
         + (f" ({minutes:g} min)" if minutes is not None else "")
@@ -408,6 +411,68 @@ def audit_tail(
         console.print(f"[dim]{entry['seq']:>6} {stamp}[/dim]  [bold]{entry['event']}[/bold]  {summary}")
     if not entries:
         console.print("[dim]ledger is empty[/dim]")
+
+
+@slack_app.command("post")
+def slack_post(run_id: str, dir: DirOption = Path(".")) -> None:
+    """Render a run as a Slack Block Kit message.
+
+    Offline-first: with no webhook configured it PRINTS the JSON (pipe it to any
+    poster). Set FLIGHTDECK_SLACK_WEBHOOK to POST it via stdlib urllib instead.
+    Unknown run → exit 2.
+    """
+    org = _org(dir)
+    with Store(org.db_path) as store:
+        run = store.run(run_id)
+        if run is None:
+            err.print(f"[red]unknown run:[/red] {run_id}")
+            raise typer.Exit(2)
+        workflow = org.workflows.get(run.workflow_id)
+        if workflow is None:
+            err.print(f"[red]run {run_id} references an unknown workflow:[/red] {run.workflow_id}")
+            raise typer.Exit(2)
+        message = slack.build_review_message(run, workflow, org)
+
+    webhook = os.environ.get(SLACK_WEBHOOK_ENV)
+    if not webhook:
+        console.print_json(json.dumps(message))
+        return
+    try:
+        slack.post_review(message, transport=slack.WebhookTransport(webhook))
+    except SlackError as exc:
+        err.print(f"[red]slack post failed:[/red] {exc}")
+        raise typer.Exit(1) from None
+    console.print(f"[green]✓[/green] posted run [bold]{run_id}[/bold] to Slack")
+
+
+@slack_app.command("handle")
+def slack_handle(
+    dir: DirOption = Path("."),
+    minutes: Annotated[
+        float | None, typer.Option(help="Override minutes (else from the modal, else org default).")
+    ] = None,
+) -> None:
+    """Read a Slack interaction payload as JSON on STDIN and record the feedback.
+
+    Closes the loop from an Accept/Edited/Reject click through the SAME feedback
+    path as `flightdeck feedback`. Malformed payload / unknown run → exit 2.
+    """
+    org = _org(dir)
+    try:
+        payload = slack.parse_interaction_form(sys.stdin.read())
+    except SlackError as exc:
+        err.print(f"[red]bad payload:[/red] {exc}")
+        raise typer.Exit(2) from None
+    with Store(org.db_path) as store:
+        try:
+            entry = slack.apply_interaction(payload, store, Ledger(org.ledger_path), org, minutes=minutes)
+        except (SlackError, FeedbackError) as exc:
+            err.print(f"[red]cannot record feedback:[/red] {exc}")
+            raise typer.Exit(2) from None
+    console.print(
+        f"[green]✓[/green] recorded via Slack: {entry.run_id} → [bold]{entry.outcome}[/bold] by {entry.by}"
+        + (f" ({entry.human_minutes:g} min)" if entry.human_minutes is not None else "")
+    )
 
 
 if __name__ == "__main__":

@@ -74,6 +74,28 @@ Append-only JSONL; each entry carries the SHA-256 of the previous one:
 
 Events: `run_completed`, `run_blocked`, `run_failed`, `feedback_recorded`, `demo_seeded`.
 
+## Capturing feedback where reviewers are (Slack)
+
+Review coverage is the bottleneck on the ROI evidence: if reviewers don't record what they did
+with an output, the hours-saved number stays a guess. Reviewers live in Slack, not a terminal,
+so flightdeck can post a run to a channel with **Accept / Edited / Reject** buttons and turn a
+click back into the same measurement `flightdeck feedback` records.
+
+- **One feedback path.** The CLI command and the Slack handler both call a single
+  `record_feedback(...)` function, so a button click lands the *identical* store row and the
+  *identical* `feedback_recorded` ledger event (`{run_id, outcome, human_minutes, by}`) — the
+  Slack `by` is the reviewer's Slack handle, with a `via slack` note on the store row for
+  provenance. There is no second, weaker feedback API to keep in sync.
+- **Offline-first, no new dependency.** `flightdeck slack post <run_id>` renders a Slack Block
+  Kit message and, by default, **prints the JSON** — fully demoable and pipeable to any poster.
+  Only when `FLIGHTDECK_SLACK_WEBHOOK` is set does it actually POST, via stdlib `urllib`
+  (the transport is injectable; the core never imports networking). `flightdeck slack handle`
+  reads an interaction payload on stdin, so a tiny serverless function — or `curl | flightdeck
+  slack handle` — closes the loop.
+- **Minutes are optional.** Buttons can't collect free text, so a plain click records no
+  minutes and the metrics fall back to the org's conservative `default_review_minutes`. An
+  optional modal collects an explicit figure when a reviewer wants to be precise.
+
 ## What the dashboard's governance panel asserts
 
 - policy blocks and budget blocks (window and all-time — old incidents stay visible),
