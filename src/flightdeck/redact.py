@@ -19,7 +19,11 @@ from dataclasses import dataclass, field
 # before the generic phone pattern gets a chance to eat it.
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
-    ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b")),
+    # The trailing 1–3 char group is CONTIGUOUS (no leading space): a space there
+    # let it swallow the next word — "ES91 … 1332 EUR" ate "EUR". Favouring
+    # precision over recall (see the module docstring), a rare space-separated final
+    # IBAN group is left unredacted rather than corrupting the surrounding text.
+    ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?:[A-Z0-9]{1,3})?\b")),
     # 13–19 digits, optional space/dash between digits; anchored on a digit at
     # both ends so a trailing separator is never swallowed into the redaction.
     ("card", re.compile(r"\b\d(?:[ -]?\d){12,18}\b")),  # candidates; Luhn filters below
