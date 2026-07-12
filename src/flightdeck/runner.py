@@ -141,12 +141,14 @@ def execute(
             context[key] = result.text
             redactions += result.hits
 
-    active_provider = provider or get_provider(spec.provider)
     tokens_in = tokens_out = 0
     latency_ms = 0
     output = ""
     clock = time.perf_counter()
     try:
+        # Resolving the adapter is part of the vendor call: an unknown provider
+        # name is a failed run recorded like any other, never an uncaught crash.
+        active_provider = provider or get_provider(spec.provider)
         for step in workflow.steps:
             prompt = render(step.prompt, context)
             completion = active_provider.complete(spec, prompt, step.max_output_tokens)

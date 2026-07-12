@@ -91,6 +91,34 @@ def test_provider_failure_is_a_failed_run_not_a_crash(org, store, ledger):
     assert ledger.entries()[-1]["event"] == "run_failed"
 
 
+def test_unknown_provider_is_a_failed_run_not_a_crash(tmp_path):
+    # A model whose provider names no registered adapter is valid, routable config
+    # (ModelSpec.provider is an unconstrained str). Resolving it must fail like any
+    # vendor error — recorded in the store AND the ledger — not crash execute().
+    from flightdeck.config import load_org
+    from flightdeck.ledger import Ledger
+    from flightdeck.store import Store
+    from tests.conftest import write_org
+
+    models = [
+        {
+            "id": "rogue-fast-eu", "provider": "cohere", "model": "command",
+            "tier": "fast", "input_cost_per_mtok": 0.01, "output_cost_per_mtok": 0.02,
+            "region": "eu", "trains_on_data": False,
+        }
+    ]
+    org = load_org(write_org(tmp_path / "org", models=models, workflows=[SUPPORT_WORKFLOW]))
+    with Store(org.db_path) as store:
+        ledger = Ledger(org.ledger_path)
+        run = execute(org, org.workflows["support-reply"], {"ticket": "hi"}, "ana", store, ledger, now=NOW)
+
+        assert run.status == "failed"  # currently RAISES ProviderError before the fix
+        assert "cohere" in run.reason
+        assert run.model_id == "rogue-fast-eu"
+        assert store.run(run.id).status == "failed"  # recorded in the store …
+    assert ledger.entries()[-1]["event"] == "run_failed"  # … and the ledger
+
+
 def test_missing_variable_is_a_user_error(org, store, ledger):
     workflow = org.workflows["support-reply"]
     with pytest.raises(VariableError, match="ticket"):
