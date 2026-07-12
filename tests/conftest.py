@@ -104,7 +104,13 @@ ORG = {
 }
 
 
-def write_org(root: Path, org: dict | None = None, models: list | None = None, workflows: list | None = None) -> Path:
+def write_org(
+    root: Path,
+    org: dict | None = None,
+    models: list | None = None,
+    workflows: list | None = None,
+    directory: dict | None = None,
+) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "flightdeck.yaml").write_text(yaml.safe_dump(org or ORG), encoding="utf-8")
     (root / "models.yaml").write_text(yaml.safe_dump({"models": models or MODELS}), encoding="utf-8")
@@ -114,6 +120,10 @@ def write_org(root: Path, org: dict | None = None, models: list | None = None, w
         for workflow in workflows:
             path = root / "workflows" / f"{workflow['id']}.yaml"
             path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+    # Opt-in only: without a `directory` argument no directory.yaml is written, so
+    # the default org is byte-for-byte what it was before the feature existed.
+    if directory is not None:
+        (root / "directory.yaml").write_text(yaml.safe_dump(directory), encoding="utf-8")
     return root
 
 

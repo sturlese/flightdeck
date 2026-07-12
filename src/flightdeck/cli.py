@@ -238,10 +238,16 @@ def run(
         key, value = item.split("=", 1)
         variables[key] = value
 
+    # Attribute the run to a STABLE directory id when the identity resolves; keep
+    # the raw string otherwise (unchanged behavior when there is no directory).
+    identity = user or getpass.getuser()
+    resolved = org.directory.resolve(identity)
+    attributed = resolved.id if resolved is not None else identity
+
     with Store(org.db_path) as store:
         ledger = Ledger(org.ledger_path)
         try:
-            result = execute(org, workflow, variables, user or getpass.getuser(), store, ledger)
+            result = execute(org, workflow, variables, attributed, store, ledger)
         except VariableError as exc:
             err.print(f"[red]{exc}[/red] — this workflow needs: {', '.join(required_vars(workflow))}")
             raise typer.Exit(2) from None
@@ -343,11 +349,16 @@ def feedback(
 ) -> None:
     """Record what a human did with a run's output — the ROI numbers feed on this."""
     org = _org(dir)
+    # Attribute the review to a STABLE directory id when the reviewer resolves;
+    # keep the raw handle otherwise (unchanged when there is no directory).
+    reviewer = by or getpass.getuser()
+    resolved = org.directory.resolve(reviewer)
     with Store(org.db_path) as store:
         try:
             record_feedback(
                 store, Ledger(org.ledger_path), run_id, outcome,
-                human_minutes=minutes, by=by or getpass.getuser(), note=note,
+                human_minutes=minutes,
+                by=resolved.id if resolved is not None else reviewer, note=note,
             )
         except FeedbackError as exc:
             err.print(f"[red]{exc}[/red]")
