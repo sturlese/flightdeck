@@ -195,6 +195,28 @@ def test_backlog_command_ranks(tmp_path):
     assert "promote the winner" in result.output
 
 
+def test_audit_tail_n_zero_shows_nothing(tmp_path):
+    root = _init(tmp_path)
+    invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=hello")
+
+    # -n 0 must show NO entries — `entries[-0:]` is the whole list, not none.
+    zero = invoke("audit", "tail", "-n", "0", "--dir", str(root))
+    assert zero.exit_code == 0
+    assert "run_" not in zero.output  # the run_completed event is not printed
+    assert "ledger is empty" not in zero.output  # the ledger isn't empty, just truncated
+
+    # -n N still shows the most recent entries.
+    some = invoke("audit", "tail", "-n", "5", "--dir", str(root))
+    assert "run_completed" in some.output
+
+
+def test_audit_tail_reports_a_truly_empty_ledger(tmp_path):
+    root = _init(tmp_path)  # scaffolded but nothing has run → no ledger yet
+    result = invoke("audit", "tail", "--dir", str(root))
+    assert result.exit_code == 0
+    assert "ledger is empty" in result.output
+
+
 # ------------------------------------------------------------------ dashboard
 
 
