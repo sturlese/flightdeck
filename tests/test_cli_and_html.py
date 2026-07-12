@@ -311,7 +311,7 @@ def test_dashboard_escapes_hostile_workflow_names(org, store, ledger):
 
 
 def test_money_never_renders_negative_zero():
-    from flightdeck.report.html import money
+    from flightdeck.format import money
 
     minus = "−"  # the U+2212 sign money() uses, not an ASCII hyphen
     # A tiny negative that rounds to zero (a near break-even net) reads as "0".

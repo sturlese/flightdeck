@@ -28,6 +28,7 @@ from flightdeck import backlog as backlog_mod
 from flightdeck.config import ConfigError, Org, load_org
 from flightdeck.demo import DemoSeedError, seed
 from flightdeck.feedback import FeedbackError, record_feedback
+from flightdeck.format import money
 from flightdeck.integrations import slack
 from flightdeck.integrations.slack import SlackError
 from flightdeck.ledger import Ledger
@@ -35,7 +36,6 @@ from flightdeck.metrics import build_report, monthly_statement
 from flightdeck.policy import allowed_models, check_budget, should_redact
 from flightdeck.report import csv_export, terminal
 from flightdeck.report import html as html_report
-from flightdeck.report.html import money
 from flightdeck.router import NoRouteError, pick
 from flightdeck.runner import VariableError, execute, required_vars
 from flightdeck.scheduler import is_due, last_run_started_at
