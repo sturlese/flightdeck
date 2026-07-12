@@ -26,7 +26,7 @@ from rich.table import Table
 from flightdeck import __version__, scaffold
 from flightdeck import backlog as backlog_mod
 from flightdeck.config import ConfigError, Org, load_org
-from flightdeck.demo import seed
+from flightdeck.demo import DemoSeedError, seed
 from flightdeck.feedback import FeedbackError, record_feedback
 from flightdeck.integrations import slack
 from flightdeck.integrations.slack import SlackError
@@ -108,7 +108,11 @@ def demo(
     html: Annotated[Path | None, typer.Option(help="Where to write the dashboard.")] = None,
 ) -> None:
     """Seed a 13-week fictional org (offline, deterministic) and report on it."""
-    summary = seed(dir)
+    try:
+        summary = seed(dir)
+    except DemoSeedError as exc:
+        err.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
     org = _org(dir)
     with Store(org.db_path) as store:
         ledger = Ledger(org.ledger_path)
