@@ -501,12 +501,15 @@ def audit_tail(
 ) -> None:
     """Show the most recent ledger entries."""
     org = _org(dir)
-    entries = Ledger(org.ledger_path).entries()[-n:]
+    all_entries = Ledger(org.ledger_path).entries()
+    # `[-n:]` is the whole list when n == 0 (`[-0:]` == `[0:]`), so guard it:
+    # asking for 0 (or fewer) entries shows none.
+    entries = all_entries[-n:] if n > 0 else []
     for entry in entries:
         stamp = entry["at"][:16].replace("T", " ")
         summary = {k: v for k, v in entry["data"].items() if k != "output_sha256"}
         console.print(f"[dim]{entry['seq']:>6} {stamp}[/dim]  [bold]{entry['event']}[/bold]  {summary}")
-    if not entries:
+    if not all_entries:
         console.print("[dim]ledger is empty[/dim]")
 
 
