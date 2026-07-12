@@ -20,7 +20,9 @@ from dataclasses import dataclass, field
 _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("email", re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")),
     ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b")),
-    ("card", re.compile(r"\b(?:\d[ -]?){13,19}\b")),  # candidates; Luhn filters below
+    # 13–19 digits, optional space/dash between digits; anchored on a digit at
+    # both ends so a trailing separator is never swallowed into the redaction.
+    ("card", re.compile(r"\b\d(?:[ -]?\d){12,18}\b")),  # candidates; Luhn filters below
     # bearer tokens / API keys: long, entropy-shaped strings with vendor prefixes
     ("secret", re.compile(r"\b(?:sk|pk|rk|key|token)[-_][A-Za-z0-9_\-]{16,}\b")),
     ("dni", re.compile(r"\b\d{8}[A-HJ-NP-TV-Z]\b")),  # Spanish national id
