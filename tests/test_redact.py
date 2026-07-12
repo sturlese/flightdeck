@@ -15,6 +15,19 @@ def test_iban():
     assert result.hits == 1
 
 
+def test_iban_does_not_eat_a_following_uppercase_token():
+    # The IBAN token must not swallow a neighbouring short uppercase/digit word,
+    # e.g. a currency code — that deletes legitimate text from the payload.
+    result = redact("Refund to ES91 2100 0418 4502 0005 1332 EUR now")
+    assert result.text == "Refund to [REDACTED:iban] EUR now"
+    assert result.by_kind["iban"] == 1
+
+
+def test_iban_does_not_eat_a_following_short_code():
+    result = redact("pay ES91 2100 0418 4502 0005 1332 ID 5")
+    assert result.text == "pay [REDACTED:iban] ID 5"
+
+
 def test_credit_card_requires_luhn():
     valid = redact("card 4111 1111 1111 1111")  # Luhn-valid test number
     invalid = redact("order id 4111 1111 1111 1112")  # fails Luhn — not a card
