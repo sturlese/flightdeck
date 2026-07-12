@@ -30,8 +30,8 @@ from dataclasses import dataclass
 
 from flightdeck.config import Org
 from flightdeck.feedback import VALID_OUTCOMES, record_feedback
+from flightdeck.format import money
 from flightdeck.ledger import Ledger
-from flightdeck.report.html import money
 from flightdeck.schemas import Feedback, Outcome, Run, Workflow
 from flightdeck.store import Store
 

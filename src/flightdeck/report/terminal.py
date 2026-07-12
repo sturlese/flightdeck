@@ -6,8 +6,8 @@ from rich.console import Console
 from rich.table import Table
 
 from flightdeck.backlog import ScoredUseCase
+from flightdeck.format import HEALTH_LABELS, money
 from flightdeck.metrics import OrgReport
-from flightdeck.report.html import _HEALTH_LABELS, money
 
 _SPARK = "▁▂▃▄▅▆▇█"
 _HEALTH_STYLE = {"good": "green", "warn": "yellow", "crit": "red", "muted": "dim"}
@@ -67,7 +67,7 @@ def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) ->
     ):
         table.add_column(column, justify=justify, style=None, header_style="dim")
     for entry in report.workflows:
-        css, label = _HEALTH_LABELS[entry.health]
+        css, label = HEALTH_LABELS[entry.health]
         table.add_row(
             entry.name,
             entry.data_classification,

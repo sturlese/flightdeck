@@ -16,29 +16,9 @@ from jinja2 import Environment
 from flightdeck import __version__
 from flightdeck.backlog import ScoredUseCase
 from flightdeck.config import Org
+from flightdeck.format import HEALTH_LABELS, SYMBOLS, money
 from flightdeck.metrics import OrgReport
 from flightdeck.report import charts
-
-_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£"}
-
-_HEALTH_LABELS = {
-    "healthy": ("good", "healthy"),
-    "watch": ("warn", "watch"),
-    "underperforming": ("crit", "underperforming"),
-    "no_data": ("muted", "no reviews yet"),
-    "no_target": ("muted", "no targets set"),
-}
-
-
-def money(value: float, currency: str, decimals: int | None = None) -> str:
-    symbol = _SYMBOLS.get(currency, f"{currency} ")
-    if decimals is None:
-        decimals = 2 if 0 < abs(value) < 20 else 0
-    amount = f"{abs(value):,.{decimals}f}"
-    # Decide the sign from the ROUNDED value: a tiny negative (e.g. a near
-    # break-even net that rounds to 0.00) must read as "0", never "−0.00".
-    negative = round(value, decimals) < 0
-    return f"{'−' if negative else ''}{symbol}{amount}"
 
 
 def _pct(value: float | None) -> str:
@@ -56,11 +36,11 @@ def render(org: Org, report: OrgReport, backlog: list[ScoredUseCase]) -> str:
         "hours", labels, [point.hours_saved for point in weeks], " h", "hours saved"
     )
     spend_chart = charts.column_chart(
-        labels, [point.cost for point in weeks], _SYMBOLS.get(currency, ""), "AI spend"
+        labels, [point.cost for point in weeks], SYMBOLS.get(currency, ""), "AI spend"
     )
     value_chart = charts.hbar_chart(
         [(entry.name, round(entry.net_value)) for entry in report.workflows],
-        _SYMBOLS.get(currency, ""),
+        SYMBOLS.get(currency, ""),
     )
     outcome = charts.outcome_chart(
         [(entry.name, entry.accepted, entry.edited, entry.rejected) for entry in report.workflows]
@@ -75,7 +55,7 @@ def render(org: Org, report: OrgReport, backlog: list[ScoredUseCase]) -> str:
 
     workflow_rows = []
     for entry in report.workflows:
-        css, label = _HEALTH_LABELS[entry.health]
+        css, label = HEALTH_LABELS[entry.health]
         workflow_rows.append(
             {
                 "name": entry.name,
