@@ -8,8 +8,10 @@ counted on the run record so redaction volume is itself a visible metric.
 
 Covers the identifiers that appear in everyday business text — emails, phone
 numbers, IBANs, credit cards (Luhn-checked), national ids, API keys/secrets.
-Org-specific patterns (employee ids, customer codes) can be added per org file.
-This is a seatbelt, not a DLP suite; docs/governance.md spells out the boundary.
+Org-specific patterns (employee ids, customer codes) come from the org file —
+``flightdeck.yaml → policy.redact_patterns``, validated at load — and reach
+this module as ``extra_patterns``. This is a seatbelt, not a DLP suite;
+docs/governance.md spells out the boundary.
 """
 
 import re

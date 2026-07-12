@@ -137,7 +137,7 @@ def execute(
     context = dict(variables)
     if should_redact(org, workflow):
         for key, value in context.items():
-            result = redact(value)
+            result = redact(value, org.config.policy.redact_patterns)
             context[key] = result.text
             redactions += result.hits
 
