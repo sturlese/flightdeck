@@ -72,6 +72,32 @@ net_value   = value − ai_cost                    (runs' recorded cost in the w
 `net_value` ignores platform/subscription overhead and the program's own staffing — those are
 budget lines, not per-workflow evidence. Add them in your board narrative, not in the tool.
 
+## Finance export (CSV)
+
+`flightdeck report --csv <path>` emits one row per **(workflow, calendar-month)** across all
+history — a statement spans time, so unlike the dashboard it ignores the KPI window. Every
+column reuses the formulas above (same `earned_minutes`, same monthly cap, same hourly cost),
+so the file ties out to the dashboard to the cent. Only months in which a workflow had at least
+one run appear; rows are sorted by `(workflow_id, month)`.
+
+| Column | Meaning |
+|---|---|
+| `workflow_id`, `workflow_name`, `department` | identity, so the file reads on its own |
+| `month` | calendar month, `YYYY-MM` (bucket = `started_at`'s month) |
+| `currency` | the org currency (prices are single-currency org-wide) |
+| `runs_completed` | completed runs that month |
+| `reviewed` | of those, how many a human gave feedback on |
+| `reviewed_pct` | `reviewed / runs_completed` as a fraction, 4 decimals (`0` when no completed runs) |
+| `hours_saved` | `Σ earned_minutes / 60` for the month, cap applied — 2 decimals |
+| `value` | `hours_saved × hourly_cost` — 2 decimals |
+| `ai_cost` | `Σ cost` of **all** the month's runs (completed + failed carry cost; blocked cost 0) — 2 decimals |
+| `net` | `value − ai_cost` — 2 decimals |
+
+Money and hours are plain machine numbers (`-3.00`, not `−€3`) so a spreadsheet parses them
+without cleanup. The serializer ([`report/csv_export.py`](../src/flightdeck/report/csv_export.py))
+computes nothing — it renders the rows [`metrics.monthly_statement`](../src/flightdeck/metrics.py)
+produced, exactly like the HTML dashboard renders `OrgReport`.
+
 ## Adoption
 
 ```

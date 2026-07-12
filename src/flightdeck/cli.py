@@ -31,10 +31,10 @@ from flightdeck.feedback import FeedbackError, record_feedback
 from flightdeck.integrations import slack
 from flightdeck.integrations.slack import SlackError
 from flightdeck.ledger import Ledger
-from flightdeck.metrics import build_report
+from flightdeck.metrics import build_report, monthly_statement
 from flightdeck.policy import allowed_models, check_budget, should_redact
+from flightdeck.report import csv_export, terminal
 from flightdeck.report import html as html_report
-from flightdeck.report import terminal
 from flightdeck.report.html import money
 from flightdeck.router import NoRouteError, pick
 from flightdeck.runner import VariableError, execute, required_vars
@@ -294,6 +294,9 @@ def report(
     dir: DirOption = Path("."),
     days: Annotated[int, typer.Option(help="KPI window in days.")] = 30,
     html: Annotated[Path | None, typer.Option(help="Also write the HTML dashboard here.")] = None,
+    csv: Annotated[
+        Path | None, typer.Option("--csv", help="Also write the per-workflow monthly finance statement (CSV) here.")
+    ] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Emit the report as JSON (for pipelines).")] = False,
 ) -> None:
     """Adoption, hours saved, cost, value and governance posture — from evidence."""
@@ -301,6 +304,8 @@ def report(
     with Store(org.db_path) as store:
         ledger = Ledger(org.ledger_path)
         data = build_report(org, store, ledger, days=days)
+        # The finance statement spans all history, not the KPI window — same store.
+        statement = monthly_statement(org, store) if csv is not None else None
     ranked = backlog_mod.ranked(org)
     if as_json:
         console.print_json(json.dumps(dataclasses.asdict(data), default=str))
@@ -309,6 +314,9 @@ def report(
     if html is not None:
         html.write_text(html_report.render(org, data, ranked), encoding="utf-8")
         console.print(f"[green]✓[/green] dashboard: [bold]{html}[/bold]")
+    if csv is not None:
+        csv.write_text(csv_export.render(statement or []), encoding="utf-8")
+        console.print(f"[green]✓[/green] finance statement: [bold]{csv}[/bold]")
 
 
 @app.command("policy")

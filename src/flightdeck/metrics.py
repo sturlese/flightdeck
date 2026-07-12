@@ -98,6 +98,27 @@ class OrgReport:
     active_users: int = 0
 
 
+@dataclass
+class MonthlyStatementRow:
+    """One (workflow, calendar-month) line of the finance statement. Self-describing
+    on purpose — name, department and currency travel with every row so the CSV
+    reads on its own in a spreadsheet, with no lookup back into the org files. The
+    numbers are the SAME formulas the dashboard uses (see ``monthly_statement``)."""
+
+    workflow_id: str
+    workflow_name: str
+    department: str
+    month: str  # calendar month, "YYYY-MM"
+    currency: str
+    runs_completed: int
+    reviewed: int  # completed runs a human gave feedback on
+    reviewed_pct: float  # reviewed / runs_completed (0 when no completed runs)
+    hours_saved: float
+    value: float  # hours_saved × hourly cost
+    ai_cost: float
+    net: float  # value − ai_cost
+
+
 # ------------------------------------------------------------------- savings
 
 
@@ -318,3 +339,69 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
 def _week_key(label: str) -> tuple[int, int]:
     year, week = label.split("-W")
     return int(year), int(week)
+
+
+# ---------------------------------------------------------------- finance export
+
+
+def monthly_statement(org: Org, store: Store) -> list[MonthlyStatementRow]:
+    """One row per (workflow, calendar-month) across ALL history in the store — a
+    finance statement spans time, so it deliberately ignores the KPI window that
+    ``build_report`` applies. Every figure reuses the same formulas the dashboard
+    reports: earned minutes come from ``earned_minutes`` (monthly cap and all), so
+    a controller's spreadsheet ties out to the dashboard to the cent.
+
+    Only months in which a workflow had at least one run appear; a workflow with
+    no runs contributes no rows. Rows are sorted by (workflow_id, month) for a
+    deterministic file. AI cost sums EVERY run of the workflow that month
+    (completed and failed carry cost; blocked runs cost 0), hours/value/net count
+    only what completed runs earned."""
+    default_review = org.config.default_review_minutes
+    all_runs = store.runs()
+    feedback = store.feedback_map()
+    earned = earned_minutes(org, all_runs, feedback, default_review)
+
+    completed: dict[tuple[str, str], int] = defaultdict(int)
+    reviewed: dict[tuple[str, str], int] = defaultdict(int)
+    minutes: dict[tuple[str, str], float] = defaultdict(float)
+    ai_cost: dict[tuple[str, str], float] = defaultdict(float)
+    seen: set[tuple[str, str]] = set()
+
+    for run in all_runs:
+        workflow = org.workflows.get(run.workflow_id)
+        if workflow is None:  # a run for a workflow no longer declared — nothing to bill it to
+            continue
+        key = (run.workflow_id, run.started_at.strftime("%Y-%m"))
+        seen.add(key)
+        ai_cost[key] += run.cost
+        if run.status == "completed":
+            completed[key] += 1
+            minutes[key] += earned.get(run.id, 0.0)
+            if run.id in feedback:
+                reviewed[key] += 1
+
+    rows: list[MonthlyStatementRow] = []
+    for workflow_id, month in sorted(seen):
+        key = (workflow_id, month)
+        workflow = org.workflows[workflow_id]
+        runs_completed = completed[key]
+        hours_saved = minutes[key] / 60
+        value = hours_saved * org.hourly_cost(workflow)
+        cost = ai_cost[key]
+        rows.append(
+            MonthlyStatementRow(
+                workflow_id=workflow_id,
+                workflow_name=workflow.name,
+                department=workflow.department,
+                month=month,
+                currency=org.config.currency,
+                runs_completed=runs_completed,
+                reviewed=reviewed[key],
+                reviewed_pct=(reviewed[key] / runs_completed) if runs_completed else 0.0,
+                hours_saved=hours_saved,
+                value=value,
+                ai_cost=cost,
+                net=value - cost,
+            )
+        )
+    return rows

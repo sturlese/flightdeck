@@ -1,5 +1,6 @@
 """End-to-end CLI tests: the exact commands a new user types, via the runner."""
 
+import csv
 import json
 from pathlib import Path
 
@@ -71,6 +72,38 @@ def test_run_feedback_report_loop_offline(tmp_path):
     result = invoke("audit", "verify", "--dir", str(root))
     assert result.exit_code == 0
     assert "chain intact" in result.output
+
+
+def test_report_csv_emits_a_parseable_finance_statement(tmp_path):
+    root = _init(tmp_path)
+    result = invoke(
+        "run", "meeting-minutes", "--dir", str(root),
+        "--var", "notes=Decided to ship v2 on May 5.", "--user", "ana",
+    )
+    assert result.exit_code == 0, result.output
+
+    out = tmp_path / "statement.csv"
+    result = invoke("report", "--dir", str(root), "--csv", str(out))
+    assert result.exit_code == 0, result.output
+    assert "finance statement" in result.output
+    assert out.exists()
+
+    with out.open(newline="", encoding="utf-8") as fh:
+        reader = csv.reader(fh)
+        header = next(reader)
+        data_rows = list(reader)
+    assert header == [
+        "workflow_id", "workflow_name", "department", "month", "currency",
+        "runs_completed", "reviewed", "reviewed_pct",
+        "hours_saved", "value", "ai_cost", "net",
+    ]
+    row = next(r for r in data_rows if r[0] == "meeting-minutes")
+    assert len(row) == len(header)
+    assert row[4]  # currency is present
+    assert int(row[5]) >= 1  # runs_completed
+    # money and hours columns parse as fixed-decimal numbers
+    for value in (row[7], row[8], row[9], row[10], row[11]):
+        float(value)
 
 
 def test_blocked_run_exits_nonzero_and_is_recorded(tmp_path):
