@@ -319,6 +319,14 @@ def test_parse_interaction_rejects_non_numeric_modal_minutes():
         parse_interaction(_view_submission_payload("run-x", "edited", minutes="soon"))
 
 
+@pytest.mark.parametrize("bad", ["-5", "nan", "inf"])
+def test_parse_interaction_rejects_invalid_modal_minutes(bad):
+    # Negative / non-finite modal minutes are a malformed payload → SlackError, not
+    # a pydantic ValidationError leaking past apply_interaction's documented contract.
+    with pytest.raises(SlackError, match="minutes must be a non-negative number"):
+        parse_interaction(_view_submission_payload("run-x", "edited", minutes=bad))
+
+
 def test_parse_interaction_tolerates_empty_modal_state():
     # A view_submission with no filled inputs → minutes stays None (org default).
     payload = _view_submission_payload("run-x", "edited")
@@ -412,3 +420,10 @@ def test_cli_slack_handle_unknown_run_exits_2(tmp_path):
     }
     result = runner.invoke(app, ["slack", "handle", "--dir", str(root)], input=json.dumps(payload))
     assert result.exit_code == 2
+
+
+def test_cli_slack_handle_negative_modal_minutes_exits_2(tmp_path):
+    root, run_id = _seeded_org(tmp_path)
+    payload = _view_submission_payload(run_id, "edited", minutes="-5")
+    result = runner.invoke(app, ["slack", "handle", "--dir", str(root)], input=json.dumps(payload))
+    assert result.exit_code == 2  # was exit 1 with a leaked ValidationError traceback

@@ -24,6 +24,7 @@ button path stands on its own.
 """
 
 import json
+import math
 import urllib.parse
 from dataclasses import dataclass
 
@@ -186,9 +187,12 @@ def _extract_minutes(state: object) -> float | None:
         for element in block.values():
             if isinstance(element, dict) and element.get("value") not in (None, ""):
                 try:
-                    return float(element["value"])
+                    minutes = float(element["value"])
                 except (TypeError, ValueError):
                     raise SlackError(f"minutes must be a number, got {element['value']!r}") from None
+                if not math.isfinite(minutes) or minutes < 0:
+                    raise SlackError(f"minutes must be a non-negative number, got {element['value']!r}")
+                return minutes
     return None
 
 

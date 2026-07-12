@@ -12,6 +12,7 @@ click lands the identical store row and ledger event as the CLI, because they
 call the very same code.
 """
 
+import math
 from datetime import datetime
 
 from flightdeck.ledger import Ledger
@@ -52,6 +53,11 @@ def record_feedback(
         raise FeedbackError(f"outcome must be one of: {', '.join(VALID_OUTCOMES)}")
     if store.run(run_id) is None:
         raise FeedbackError(f"unknown run: {run_id}")
+    if human_minutes is not None and (not math.isfinite(human_minutes) or human_minutes < 0):
+        # Review time can't be negative or non-finite. Catch it here as a business
+        # error so every caller (CLI, Slack) gets a clean FeedbackError rather than
+        # a pydantic ValidationError leaking past its exit-code handling.
+        raise FeedbackError(f"human_minutes must be a non-negative number, got {human_minutes!r}")
     entry = Feedback(
         run_id=run_id,
         outcome=outcome,  # type: ignore[arg-type]
