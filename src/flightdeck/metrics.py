@@ -178,7 +178,10 @@ def _health(workflow: Workflow, report: WorkflowReport) -> Health:
     if workflow.success.acceptance_target is not None:
         if report.acceptance_rate is None:
             return "no_data" if workflow.review != "none" else "no_target"
-        targets.append(report.acceptance_rate / workflow.success.acceptance_target)
+        target = workflow.success.acceptance_target
+        # A target of 0 (schema-legal: ge=0) is a bar any acceptance rate clears —
+        # the ratio is "met", not a division by zero that crashes the whole report.
+        targets.append(report.acceptance_rate / target if target > 0 else 1.0)
     if workflow.success.weekly_active_users_target is not None and report.weekly_active_avg is not None:
         targets.append(report.weekly_active_avg / workflow.success.weekly_active_users_target)
     if not targets:

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from flightdeck.metrics import build_report, minutes_saved, monthly_statement
-from flightdeck.schemas import Feedback, Run
+from flightdeck.schemas import Feedback, Run, SuccessCriteria
 from tests.conftest import NOW
 
 BASELINE = 12  # support-reply baseline minutes in the fixture org
@@ -145,6 +145,32 @@ class TestBuildReport:
         entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
         assert entry.runs_completed == 0
         assert len(report.weekly) == 1  # …but the trend still sees full history
+
+    def test_zero_acceptance_target_is_met_not_a_crash(self, org, store, ledger):
+        # acceptance_target: 0 is schema-legal (ge=0). A reviewed run must not crash
+        # build_report with a ZeroDivisionError — a 0 bar is cleared by any rate.
+        wf = org.workflows["support-reply"].model_copy(
+            update={"success": SuccessCriteria(acceptance_target=0.0)}
+        )
+        org.workflows["support-reply"] = wf
+        store.add_run(_run("r", NOW - timedelta(days=2)))
+        store.add_feedback(_feedback("r", "accepted", 2.0))
+        report = build_report(org, store, ledger, days=30, now=NOW)  # raised before the fix
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+        assert entry.acceptance_rate == 1.0
+        assert entry.health == "healthy"
+
+    def test_zero_acceptance_target_does_not_mask_a_failing_second_target(self, org, store, ledger):
+        # A 0 acceptance bar is "met", but must not hide a failing weekly-actives target.
+        wf = org.workflows["support-reply"].model_copy(
+            update={"success": SuccessCriteria(acceptance_target=0.0, weekly_active_users_target=6)}
+        )
+        org.workflows["support-reply"] = wf
+        store.add_run(_run("r", NOW - timedelta(days=9), user="ana"))  # ~1 weekly active vs target 6
+        store.add_feedback(_feedback("r", "accepted", 2.0))
+        report = build_report(org, store, ledger, days=30, now=NOW)
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+        assert entry.health == "underperforming"
 
 
 class TestMonthlyCap:
