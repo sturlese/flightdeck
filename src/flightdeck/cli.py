@@ -174,13 +174,22 @@ def promote(usecase_id: str, dir: DirOption = Path(".")) -> None:
     tier = "fast" if case.risk <= 2 else ("balanced" if case.risk == 3 else "frontier")
     data_class = "internal" if case.risk <= 3 else ("confidential" if case.risk == 4 else "restricted")
     hourly = f"\n  hourly_cost: {case.hourly_cost:g}" if case.hourly_cost else ""
+    # Free-text fields go through json.dumps: a JSON string is a valid YAML
+    # double-quoted scalar, so a name like "Bug #42" or a department like
+    # "Ops: EU" can't break the document or be silently mis-parsed as a comment.
+    name = json.dumps(case.name)
+    department = json.dumps(case.department)
+    description = json.dumps(case.description or "TODO")
+    # Inside the prompt block scalar, collapse whitespace so a multi-line name
+    # can't break the block's indentation (colons/hashes are already safe there).
+    prompt_name = " ".join(case.name.split())
     content = f"""\
 # Promoted from use case '{case.id}' — review every value before piloting.
 id: {case.id}
-name: {case.name}
-department: {case.department}
+name: {name}
+department: {department}
 use_case: {case.id}
-description: {case.description or "TODO"}
+description: {description}
 data_classification: {data_class}   # derived from risk={case.risk}; confirm with the data owner
 tier: {tier}
 review: human_in_the_loop
@@ -194,7 +203,7 @@ steps:
     vars: [input]
     max_output_tokens: 800
     prompt: |
-      TODO: write the prompt for '{case.name}'. One clear job per step,
+      TODO: write the prompt for '{prompt_name}'. One clear job per step,
       grounded in the provided input, no invented facts.
 
       INPUT:
