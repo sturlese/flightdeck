@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from flightdeck.metrics import build_report, minutes_saved
+from flightdeck.metrics import build_report, minutes_saved, monthly_statement
 from flightdeck.schemas import Feedback, Run
 from tests.conftest import NOW
 
@@ -169,3 +169,67 @@ class TestMonthlyCap:
         earned = earned_minutes(org, runs, feedback, 2.0)
         assert earned["good"] == 10.0
         assert earned["bad"] == -5.0  # wasted review time always counts against
+
+
+class TestMonthlyStatement:
+    """The finance export: one row per (workflow, month), same formulas as the dashboard."""
+
+    def test_one_row_per_workflow_month_ties_out_to_build_report(self, org, store, ledger):
+        # Two calendar months of activity for support-reply; board-brief has none.
+        jun = datetime(2026, 6, 15, 12, tzinfo=UTC)
+        jul_a = datetime(2026, 7, 5, 9, tzinfo=UTC)
+        jul_b = datetime(2026, 7, 5, 10, tzinfo=UTC)
+        store.add_run(_run("jun", jun))
+        store.add_feedback(_feedback("jun", "accepted", 2.0))  # +10 min in June
+        store.add_run(_run("jula", jul_a))
+        store.add_feedback(_feedback("jula", "accepted", 3.0))  # +9 min in July
+        store.add_run(_run("julb", jul_b))  # completed but unreviewed → 0 min
+
+        rows = monthly_statement(org, store)
+        # Only months with runs, sorted by (workflow_id, month); no board-brief row.
+        assert [(r.workflow_id, r.month) for r in rows] == [
+            ("support-reply", "2026-06"),
+            ("support-reply", "2026-07"),
+        ]
+        july = next(r for r in rows if r.month == "2026-07")
+        assert july.workflow_name == "Support reply drafting"
+        assert july.department == "Support"
+        assert july.currency == "EUR"
+        assert july.runs_completed == 2
+        assert july.reviewed == 1
+        assert july.reviewed_pct == pytest.approx(0.5)
+
+        # A window covering ONLY July must reproduce July's hours/value/net exactly —
+        # same earned_minutes, same hourly cost, so the CSV ties out to the dashboard.
+        window = build_report(org, store, ledger, days=19, now=datetime(2026, 7, 20, 12, tzinfo=UTC))
+        entry = next(e for e in window.workflows if e.workflow_id == "support-reply")
+        assert entry.runs_completed == 2  # only the two July runs fall in this window
+        assert july.hours_saved == pytest.approx(entry.hours_saved)
+        assert july.value == pytest.approx(entry.value)
+        assert july.net == pytest.approx(entry.net_value)
+
+    def test_reviewed_pct_is_zero_without_completed_runs(self, org, store):
+        # A month with only a blocked run: it exists (there was a run) but earns and
+        # reviews nothing, so reviewed_pct must be 0, not a division by zero.
+        when = datetime(2026, 3, 4, 8, tzinfo=UTC)
+        store.add_run(_run("blk", when, status="blocked", reason="budget", model_id="", cost=0))
+        rows = monthly_statement(org, store)
+        row = next(r for r in rows if r.month == "2026-03")
+        assert row.runs_completed == 0
+        assert row.reviewed_pct == 0.0
+        assert row.hours_saved == 0.0
+        assert row.ai_cost == 0.0
+
+    def test_hours_saved_capped_at_declared_monthly_volume(self, org, store):
+        # Many completed runs in ONE month, far past the declared task volume:
+        # hours_saved caps at minutes_per_task × tasks_per_month / 60 (see earned_minutes).
+        workflow = org.workflows["support-reply"].model_copy(update={"review": "none"})
+        org.workflows["support-reply"] = workflow
+        base = datetime(2026, 5, 1, 8, tzinfo=UTC)
+        for i in range(700):  # 700 × 12 = 8400 raw min, but the cap is 12 × 640 = 7680
+            store.add_run(_run(f"cap{i}", base + timedelta(minutes=i)))
+        row = next(r for r in monthly_statement(org, store) if r.month == "2026-05")
+        assert row.runs_completed == 700
+        assert row.hours_saved == pytest.approx(12 * 640 / 60)  # capped at declared volume
+        assert row.value == pytest.approx(12 * 640 / 60 * 40)  # org default hourly cost
+        assert row.net == pytest.approx(row.value - row.ai_cost)
