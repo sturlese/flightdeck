@@ -155,6 +155,24 @@ def test_tick_runs_due_workflow_once_then_is_idempotent(tmp_path, monkeypatch):
         assert len(store.runs(workflow_id="daily-digest")) == 1
 
 
+def test_tick_broken_workflow_does_not_starve_later_ones(tmp_path, monkeypatch):
+    _freeze(monkeypatch)
+    # `aaa-broken` sorts before `daily-digest` and is misconfigured (its schedule
+    # omits the required `source` var), so with the old mid-loop abort the healthy
+    # digest would never run — its execution depended on an unrelated id's ordering.
+    broken = {**DIGEST_WORKFLOW, "id": "aaa-broken", "schedule": {"cadence": "daily", "vars": {}}}
+    root = write_org(tmp_path / "org", workflows=[broken, DIGEST_WORKFLOW])
+
+    result = invoke("tick", "--dir", str(root))
+    assert result.exit_code == 2  # the config error is still signalled to cron…
+    assert "aaa-broken" in result.output
+
+    # …but the healthy, due workflow sorted AFTER the broken one still ran.
+    org = load_org(root)
+    with Store(org.db_path) as store:
+        assert len(store.runs(workflow_id="daily-digest")) == 1
+
+
 def test_tick_budget_exhausted_records_blocked_and_exits_zero(tmp_path, monkeypatch):
     _freeze(monkeypatch)
     capped = {**DIGEST_WORKFLOW, "guardrails": {"redact_pii": False, "monthly_budget": 1}}
