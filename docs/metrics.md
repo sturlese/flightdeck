@@ -132,7 +132,8 @@ target), using the worst ratio:
 | no targets declared | `no_target` |
 
 Targets are declared in the workflow file *before* the pilot, in version control — moving a
-goalpost is a visible diff with an author.
+goalpost is a visible diff with an author. An `acceptance_target` of `0` is a bar any rate
+clears, so that axis reads as met (ratio 1.0) rather than dividing by zero.
 
 ## Backlog score
 
