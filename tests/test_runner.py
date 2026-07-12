@@ -14,6 +14,13 @@ class FailingProvider:
         raise ProviderError("anthropic: 529 overloaded")
 
 
+class BuggyProvider:
+    """Simulates an adapter DEFECT: raises something that is not a ProviderError."""
+
+    def complete(self, spec, prompt, max_output_tokens):
+        raise AttributeError("'NoneType' object has no attribute 'usage'")
+
+
 class EchoProvider:
     """Returns the prompt itself — lets tests assert on redaction and chaining."""
 
@@ -117,6 +124,31 @@ def test_unknown_provider_is_a_failed_run_not_a_crash(tmp_path):
         assert run.model_id == "rogue-fast-eu"
         assert store.run(run.id).status == "failed"  # recorded in the store …
     assert ledger.entries()[-1]["event"] == "run_failed"  # … and the ledger
+
+
+def test_adapter_bug_is_a_recorded_failed_run_not_an_unrecorded_crash(org, store, ledger):
+    # The evidence invariant: EVERY path lands in the store and the ledger. An
+    # adapter raising outside its ProviderError contract used to escape execute()
+    # uncaught, leaving no trace of the attempt.
+    workflow = org.workflows["support-reply"]
+    run = execute(org, workflow, {"ticket": "hi"}, "ana", store, ledger, provider=BuggyProvider(), now=NOW)
+
+    assert run.status == "failed"
+    assert "AttributeError" in run.reason  # the defect is named, not laundered as a vendor error
+    assert store.run(run.id).status == "failed"  # recorded in the store …
+    assert ledger.entries()[-1]["event"] == "run_failed"  # … and the ledger
+
+
+def test_undeclared_template_variable_still_raises_unrecorded(org, store, ledger):
+    # VariableError is a config/user error, not a vendor failure: it must keep
+    # propagating (the CLI maps it to exit 2; tick counts it as a config error)
+    # and must not be swallowed by the broad adapter-bug handler.
+    workflow = org.workflows["support-reply"].model_copy(deep=True)
+    workflow.steps[0].prompt = "Draft: {{undeclared}}"
+
+    with pytest.raises(VariableError, match="undeclared"):
+        execute(org, workflow, {"ticket": "hi"}, "ana", store, ledger, now=NOW)
+    assert store.runs() == []  # user errors are not governance events
 
 
 def test_missing_variable_is_a_user_error(org, store, ledger):
