@@ -265,3 +265,40 @@ class Feedback(StrictModel):
     by: str = ""
     note: str = ""
     at: datetime
+
+
+# --------------------------------------------------------------------------- directory
+
+
+#: Where a directory snapshot came from. Metadata only — the core reads ``users``
+#: and never calls the provider's API (the live pull is a documented sync adapter).
+DirectorySource = Literal["file", "azure_ad", "google_workspace"]
+
+
+class DirectoryUser(StrictModel):
+    """One person from the org's SSO directory (Azure AD / Google Workspace / HRIS).
+
+    ``id`` is the STABLE identifier runs attribute to — an Azure objectId, a
+    Google id, an employee number. Deliberately NOT a slug: real directory ids
+    carry uppercase, dots and @. ``aliases`` are other handles that resolve to
+    this same person (old usernames, sam-account-names), so a run typed as a
+    legacy login still lands on the right stable id. Privacy: the stable id is
+    what gets stored on a run; the display name is rendered only at report time."""
+
+    id: str = Field(min_length=1)  # stable external id — free non-empty string, not a slug
+    display_name: str = Field(min_length=1)
+    email: str | None = None  # a UPN, not necessarily RFC-strict; matched case-insensitively
+    department: str | None = None
+    active: bool = True  # inactive members never count toward an adoption denominator
+    aliases: list[str] = Field(default_factory=list)
+
+
+class DirectorySnapshot(StrictModel):
+    """The on-disk ``directory.yaml``: a synced snapshot of the org directory.
+
+    ``provider`` records where the snapshot was pulled from; the offline core
+    only ever reads ``users``. A real Azure AD / Google Workspace sync writes
+    this file out-of-band (see ``directory.py`` and docs/governance.md)."""
+
+    provider: DirectorySource = "file"
+    users: list[DirectoryUser] = Field(default_factory=list)

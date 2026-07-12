@@ -104,6 +104,66 @@ click back into the same measurement `flightdeck feedback` records.
   registry facts of the models actually used,
 - ledger integrity (verified at report time, every time).
 
+## User attribution and the SSO directory
+
+Runs attribute to a user. Left as free text, `ana`, `Ana G.` and
+`ana.garcia@example.com` are three different people to the KPIs, and the adoption
+denominator (eligible vs. active users per department) comes from hand-maintained
+YAML headcounts rather than the source of truth. An optional **synced directory
+snapshot** fixes both, without adding any network dependency to the core.
+
+- **The snapshot — `directory.yaml` at the org root** (optional; absent changes
+  nothing). Top-level `{provider, users}`, where `provider` is metadata
+  (`file` | `azure_ad` | `google_workspace`) recording where the snapshot came
+  from, and each user carries a **stable `id`** (an Azure objectId, a Google id,
+  an employee number — *not* a slug), a `display_name`, and optional `email`,
+  `department`, `active` (default `true`) and `aliases` (old usernames /
+  sam-account-names that resolve to the same person):
+
+  ```yaml
+  provider: azure_ad
+  users:
+    - id: AAD-8f3c…            # the stable id — this is what gets stored on a run
+      display_name: Ana García
+      email: ana.garcia@example.com
+      department: Support
+      active: true
+      aliases: [ana, agarcia]
+  ```
+
+  Loading is strict, like every other governance file: an unknown key or a
+  duplicate `id` fails loudly with `directory.yaml` named.
+
+- **Resolution is deterministic.** At run time the effective user (`--user`, else
+  the OS user) is resolved through the directory with a fixed precedence: exact
+  **id**, then **email**, then **alias**, then **display_name** (every match after
+  id is case-insensitive). First match wins; nothing matches → the raw string is
+  kept exactly as before, so an unknown user is never lost.
+
+- **Privacy: store ids, render names.** A resolved run stores the **stable id**
+  (an opaque key), never the free-text handle; display names are rendered only at
+  report time and fall back to the id for anyone not (yet) in the directory. The
+  reports today show user *counts* and adoption — computed over distinct stable
+  ids — so nothing individual is surfaced; the display-name resolver exists for
+  any surface that later needs it.
+
+- **Directory-sourced denominators.** When the directory has active members in a
+  department, that resolved count becomes the adoption denominator
+  (`Org.department_headcount` → `eligible_users`), overriding the YAML headcount;
+  absent members fall back to the declared headcount. An explicit
+  `workflow.eligible_users` still wins over both. Inactive members never count.
+
+- **The sync is read-only and out-of-band.** The offline core only ever *reads*
+  `directory.yaml`. Refreshing it from a live provider is a documented, pluggable
+  adapter (`Directory.from_provider`), mirroring the provider adapters: for
+  `azure_ad` / `google_workspace` it raises a clear "needs the extra +
+  credentials" error until wired, so the core and the test suite never touch a
+  network. A real sync runs on a schedule (CI/cron), installs the extra
+  (`ai-flightdeck[azure]` → Microsoft Graph `/users`; `ai-flightdeck[google]` →
+  Admin SDK Directory `users.list`), maps each record to a user (stable id →
+  `id`), writes the snapshot, and commits it — so the directory itself changes by
+  reviewed diff, like the rest of the governed files.
+
 ## Operating guidance
 
 - The policy block and the model registry are **owned artifacts** (typically the AI lead +

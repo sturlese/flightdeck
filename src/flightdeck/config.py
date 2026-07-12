@@ -16,11 +16,13 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from flightdeck.directory import Directory
 from flightdeck.schemas import ModelSpec, OrgConfig, UseCase, Workflow
 
 ORG_FILE = "flightdeck.yaml"
 MODELS_FILE = "models.yaml"
 USECASES_FILE = "usecases.yaml"
+DIRECTORY_FILE = "directory.yaml"
 WORKFLOWS_DIR = "workflows"
 STATE_DIR = ".flightdeck"
 
@@ -36,6 +38,9 @@ class Org:
     models: dict[str, ModelSpec] = field(default_factory=dict)
     usecases: dict[str, UseCase] = field(default_factory=dict)
     workflows: dict[str, Workflow] = field(default_factory=dict)
+    #: Synced SSO directory snapshot. Empty when no directory.yaml is present, so
+    #: the feature is opt-in and its absence changes nothing.
+    directory: Directory = field(default_factory=Directory)
 
     @property
     def state_dir(self) -> Path:
@@ -55,6 +60,13 @@ class Org:
         return workflow.baseline.hourly_cost or self.config.default_hourly_cost
 
     def department_headcount(self, name: str) -> int | None:
+        """The adoption denominator's source of truth. When the synced directory
+        has active members in ``name``, that resolved count wins over the
+        hand-maintained YAML headcount; otherwise fall back to the declared
+        ``departments`` headcount, else unknown."""
+        directory_count = self.directory.department_headcount(name)
+        if directory_count:
+            return directory_count
         for dept in self.config.departments:
             if dept.name == name:
                 return dept.headcount
@@ -144,4 +156,14 @@ def load_org(root: Path | str) -> Org:
                 )
             workflows[workflow.id] = workflow
 
-    return Org(root=root, config=config, models=models, usecases=usecases, workflows=workflows)
+    # Optional SSO directory snapshot (like usecases.yaml, absent is fine).
+    directory = Directory.from_file(root / DIRECTORY_FILE)
+
+    return Org(
+        root=root,
+        config=config,
+        models=models,
+        usecases=usecases,
+        workflows=workflows,
+        directory=directory,
+    )
