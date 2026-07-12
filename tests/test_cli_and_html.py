@@ -43,6 +43,15 @@ def test_init_refuses_to_overwrite(tmp_path):
     assert result.exit_code == 2
 
 
+def test_demo_refuses_a_real_org_with_exit_2(tmp_path):
+    root = _init(tmp_path)
+    result = invoke("demo", "--dir", str(root))
+    assert result.exit_code == 2
+    assert "refusing to seed" in result.output
+    org = load_org(root)  # the org still loads: nothing was overwritten
+    assert "meeting-minutes" in org.workflows
+
+
 def test_run_feedback_report_loop_offline(tmp_path):
     root = _init(tmp_path)
 

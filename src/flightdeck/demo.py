@@ -26,6 +26,8 @@ from importlib.resources import files
 from pathlib import Path
 from random import Random
 
+import yaml
+
 from flightdeck.config import load_org
 from flightdeck.ledger import Ledger
 from flightdeck.runner import record  # the same evidence path real runs take
@@ -116,6 +118,12 @@ _POLICY_BLOCK_REASON = (
 )
 
 
+class DemoSeedError(Exception):
+    """Seeding would destroy files that are not a previous flightdeck demo. The
+    CLI maps this to a usage error (exit 2); callers that mean it pass a fresh
+    directory."""
+
+
 @dataclass
 class DemoSummary:
     root: Path
@@ -139,10 +147,36 @@ def _business_moment(rng: Random, week_start: date, max_day: int = 4) -> datetim
     )
 
 
+def _refuse_to_destroy(root: Path, source) -> None:
+    """Allow seeding only into a new/empty directory or a previous demo org,
+    recognized by the demo org's name in ``flightdeck.yaml``. Re-seeding a demo
+    in place is routine (the dir accumulates dashboards and runtime state);
+    silently wiping a REAL org's workflows, store and audit ledger is not."""
+    if not root.exists() or not any(root.iterdir()):
+        return
+    demo_name = yaml.safe_load((source / "flightdeck.yaml").read_text(encoding="utf-8"))["name"]
+    org_file = root / "flightdeck.yaml"
+    if org_file.is_file():
+        try:
+            existing = yaml.safe_load(org_file.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            existing = None
+        if isinstance(existing, dict) and existing.get("name") == demo_name:
+            return
+    raise DemoSeedError(
+        f"refusing to seed the demo into {root}: the directory is not empty and is not a "
+        f"previous flightdeck demo — seeding would overwrite the org files and delete "
+        f"workflows/, the run store and the audit ledger. Pass a new or empty --dir."
+    )
+
+
 def seed(target: Path | str, weeks: int = WEEKS, rng_seed: int = SEED) -> DemoSummary:
-    """Create the demo org at ``target`` and seed its store and ledger."""
+    """Create the demo org at ``target`` and seed its store and ledger. ``target``
+    must be new, empty, or a previous demo: seeding overwrites the org files and
+    deletes workflows/, the store and the ledger (see ``_refuse_to_destroy``)."""
     root = Path(target)
     source = files("flightdeck") / "demo_org"
+    _refuse_to_destroy(root, source)
     root.mkdir(parents=True, exist_ok=True)
     for item in ("flightdeck.yaml", "models.yaml", "usecases.yaml"):
         (root / item).write_text((source / item).read_text(encoding="utf-8"), encoding="utf-8")
