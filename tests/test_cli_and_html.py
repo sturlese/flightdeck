@@ -260,3 +260,16 @@ def test_dashboard_escapes_hostile_workflow_names(org, store, ledger):
     page = html_report.render(org, report, [])
     assert "<script>alert(1)</script>" not in page
     assert "&lt;script&gt;" in page or "\\u003cscript" in page
+
+
+def test_money_never_renders_negative_zero():
+    from flightdeck.report.html import money
+
+    minus = "−"  # the U+2212 sign money() uses, not an ASCII hyphen
+    # A tiny negative that rounds to zero (a near break-even net) reads as "0".
+    assert money(-0.004, "EUR") == "€0.00"
+    assert money(-0.004, "USD") == "$0.00"
+    # Values that round to a nonzero magnitude keep their sign; zero stays unsigned.
+    assert money(-0.006, "EUR") == f"{minus}€0.01"
+    assert money(-3.0, "EUR") == f"{minus}€3.00"
+    assert money(0.0, "EUR") == "€0"

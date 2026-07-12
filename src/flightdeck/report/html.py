@@ -35,7 +35,10 @@ def money(value: float, currency: str, decimals: int | None = None) -> str:
     if decimals is None:
         decimals = 2 if 0 < abs(value) < 20 else 0
     amount = f"{abs(value):,.{decimals}f}"
-    return f"{'−' if value < 0 else ''}{symbol}{amount}"
+    # Decide the sign from the ROUNDED value: a tiny negative (e.g. a near
+    # break-even net that rounds to 0.00) must read as "0", never "−0.00".
+    negative = round(value, decimals) < 0
+    return f"{'−' if negative else ''}{symbol}{amount}"
 
 
 def _pct(value: float | None) -> str:
