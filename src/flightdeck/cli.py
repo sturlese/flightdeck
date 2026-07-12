@@ -314,6 +314,7 @@ def tick(
         return
 
     now = datetime.now(UTC)
+    config_errors = 0
     with Store(org.db_path) as store:
         ledger = Ledger(org.ledger_path)
         for workflow in scheduled:
@@ -328,11 +329,15 @@ def tick(
             try:
                 result = execute(org, workflow, schedule.vars, SCHEDULER_USER, store, ledger, now=now)
             except VariableError as exc:
+                # A misconfigured workflow must not starve the rest of the batch:
+                # report it and carry on, then exit non-zero at the end so cron
+                # still sees the config error.
+                config_errors += 1
                 err.print(
                     f"[red]config error:[/red] {workflow.id}: {exc} — declare them under "
                     f"[bold]schedule.vars[/bold] (needs: {', '.join(required_vars(workflow))})"
                 )
-                raise typer.Exit(2) from None
+                continue
             if result.status == "completed":
                 console.print(
                     f"[green]✓ {workflow.id}: ran[/green] ({cadence}) · {result.model_id} "
@@ -345,6 +350,8 @@ def tick(
                 )
             else:
                 console.print(f"[red]✕ {workflow.id}: failed[/red] ({cadence}) · {result.reason}")
+    if config_errors:
+        raise typer.Exit(2)
 
 
 @app.command()
