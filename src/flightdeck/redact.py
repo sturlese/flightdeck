@@ -49,6 +49,25 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
+def _redact_card_span(span: str) -> str | None:
+    """A candidate span whose digits are not *themselves* a valid card may still
+    embed one: a real 16-digit card printed next to a short number (a CVV, an
+    amount, a reference) forms a 17–19 digit run that ends on a word boundary and
+    so is grabbed whole by the greedy card pattern, fails Luhn as a combined
+    string, and would otherwise leak in clear text. Redact the first Luhn-valid
+    13–19 digit card aligned to the span's digit groups, leaving the adjacent
+    number intact (precision over recall, like the trailing-separator rule). Try
+    the longest run at each start first so a full card wins over a shorter
+    coincidence. Return None when the span embeds no valid card."""
+    tokens = re.split(r"([ -])", span)  # digit groups at even indices, single separators at odd
+    for a in range(0, len(tokens), 2):
+        for b in range(len(tokens) - 1, a - 1, -2):
+            digits = "".join(tokens[k] for k in range(a, b + 1, 2))
+            if 13 <= len(digits) <= 19 and _luhn_ok(digits):
+                return f"{''.join(tokens[:a])}[REDACTED:card]{''.join(tokens[b + 1:])}"
+    return None
+
+
 @dataclass
 class RedactionResult:
     text: str
@@ -65,7 +84,13 @@ def redact(text: str, extra_patterns: list[str] | None = None) -> RedactionResul
         def _replace(match: re.Match[str]) -> str:
             digits = re.sub(r"\D", "", match.group(0))
             if kind == "card" and not (13 <= len(digits) <= 19 and _luhn_ok(digits)):
-                return match.group(0)  # long number, but not a card — leave it
+                # The whole span isn't a card, but a real card may be embedded next
+                # to a short adjacent number — redact just the card if so, else leave it.
+                embedded = _redact_card_span(match.group(0))
+                if embedded is None:
+                    return match.group(0)  # long number, but no card inside — leave it
+                by_kind[kind] = by_kind.get(kind, 0) + 1
+                return embedded
             if kind == "phone" and not (9 <= len(digits) <= 15):
                 return match.group(0)  # too long/short for E.164 — likely an id, leave it
             by_kind[kind] = by_kind.get(kind, 0) + 1

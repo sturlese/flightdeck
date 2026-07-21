@@ -47,6 +47,24 @@ def test_two_adjacent_cards_keep_their_separator():
     assert result.text == "[REDACTED:card] [REDACTED:card]"
 
 
+def test_card_followed_by_short_number_still_redacted():
+    # A valid card next to a short group (a CVV, an amount) forms a 17–19 digit
+    # run the greedy pattern grabs whole; the combined string fails Luhn, so the
+    # card must not be allowed to leak — redact it and leave the short number.
+    result = redact("charge 4111 1111 1111 1111 123 now")
+    assert "[REDACTED:card]" in result.text
+    assert "4111 1111 1111 1111" not in result.text  # the card must not leak in clear text
+    assert result.text == "charge [REDACTED:card] 123 now"
+    assert result.by_kind["card"] == 1
+
+
+def test_card_preceded_by_short_number_still_redacted():
+    # Same failure when the short group leads the card instead of trailing it.
+    result = redact("ref 12 4111 1111 1111 1111 done")
+    assert result.text == "ref 12 [REDACTED:card] done"
+    assert result.by_kind["card"] == 1
+
+
 def test_api_secret():
     result = redact("use key sk-abc123def456ghi789jkl012 for now")
     assert "[REDACTED:secret]" in result.text
