@@ -118,8 +118,11 @@ class PolicyConfig(StrictModel):
     #: top of the built-in PII patterns whenever a workflow redacts. Hits are
     #: counted on the run like every built-in pattern's.
     redact_patterns: list[str] = Field(default_factory=list)
-    #: Applied to every workflow that does not set its own cap. None = uncapped.
-    default_monthly_budget: float | None = None
+    #: Applied to every workflow that does not set its own cap. None = uncapped;
+    #: a real cap is positive (gt=0), same as the per-workflow ``monthly_budget``
+    #: it stands in for — 0/negative isn't a looser cap, it fail-closes every
+    #: uncapped workflow (``check_budget``: ``spent >= cap`` is true at 0 spend).
+    default_monthly_budget: float | None = Field(default=None, gt=0)
 
     @field_validator("redact_patterns")
     @classmethod

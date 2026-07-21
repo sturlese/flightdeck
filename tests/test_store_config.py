@@ -113,6 +113,18 @@ def test_redact_patterns_load_and_default_empty(tmp_path):
     assert plain.config.policy.redact_patterns == []
 
 
+@pytest.mark.parametrize("bad", [0, -5])
+def test_non_positive_default_monthly_budget_fails_loudly(tmp_path, bad):
+    # A 0/negative org default is not a looser cap — check_budget's `spent >= cap`
+    # is already true at 0 spend, so it fail-closes EVERY uncapped workflow. Like
+    # the per-workflow monthly_budget (gt=0), it must be rejected at load, naming
+    # the file, never surface as silent org-wide blocking at run time.
+    org = dict(ORG)
+    org["policy"] = {"default_monthly_budget": bad}
+    with pytest.raises(ConfigError, match=r"flightdeck\.yaml"):
+        load_org(write_org(tmp_path / "org", org=org))
+
+
 def test_partial_data_rules_keep_conservative_defaults(tmp_path):
     org = dict(ORG)
     org["policy"] = {"data_rules": {"restricted": {"models": ["mock-frontier-eu"]}}}
