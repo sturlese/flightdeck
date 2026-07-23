@@ -29,8 +29,12 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # 13–19 digits, optional space/dash between digits; anchored on a digit at
     # both ends so a trailing separator is never swallowed into the redaction.
     ("card", re.compile(r"\b\d(?:[ -]?\d){12,18}\b")),  # candidates; Luhn filters below
-    # bearer tokens / API keys: long, entropy-shaped strings with vendor prefixes
-    ("secret", re.compile(r"\b(?:sk|pk|rk|key|token)[-_][A-Za-z0-9_\-]{16,}\b")),
+    # bearer tokens / API keys: long, entropy-shaped strings with vendor prefixes.
+    # The (?=…\d) lookahead requires a digit in the body so the pattern stays on
+    # real keys and does not eat ordinary hyphenated prose that merely starts with a
+    # prefix word ("token-based-authentication-flow", "key-value-store-…"): dictionary
+    # words carry no digits, keys do. Precision over recall (see the module docstring).
+    ("secret", re.compile(r"\b(?:sk|pk|rk|key|token)[-_](?=[A-Za-z0-9_\-]*\d)[A-Za-z0-9_\-]{16,}\b")),
     ("dni", re.compile(r"\b\d{8}[A-HJ-NP-TV-Z]\b")),  # Spanish national id
     # formatted phone numbers, tolerant of separators; digit count checked below (E.164: 9–15)
     ("phone", re.compile(r"(?<![\w/])\+?\d[\d ()\-.]{7,}\d(?![\w/])")),
