@@ -310,6 +310,23 @@ def test_dashboard_escapes_hostile_workflow_names(org, store, ledger):
     assert "&lt;script&gt;" in page or "\\u003cscript" in page
 
 
+def test_dashboard_workflow_net_uses_zero_decimals_like_the_terminal(org, store, ledger):
+    # format.py promises a KPI reads the same in the terminal as on the mailed page.
+    # The terminal net column and the net KPI tile both use money(value, currency, 0);
+    # for a small net (|value| < 20) the HTML row must not fall on money()'s 2-decimal
+    # default and show "€12.50" where the terminal shows "€12".
+    from flightdeck.format import money
+
+    _seed_complete_week(store)
+    report = build_report(org, store, ledger)
+    entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+    entry.net_value = 12.5  # small net → triggers money()'s 2-decimal default
+    page = html_report.render(org, report, ranked(org))
+
+    assert money(12.5, report.currency, 0) in page  # "€12", the 0-decimal form
+    assert money(12.5, report.currency) not in page  # never the 2-decimal "€12.50"
+
+
 def test_money_never_renders_negative_zero():
     from flightdeck.format import money
 
