@@ -68,7 +68,10 @@ def render(org: Org, report: OrgReport, backlog: list[ScoredUseCase]) -> str:
                 "acceptance": _pct(entry.acceptance_rate),
                 "hours": f"{entry.hours_saved:,.1f}",
                 "cost": money(entry.ai_cost, currency),
-                "net": money(entry.net_value, currency),
+                # 0 decimals to match the terminal report's net column and the net
+                # KPI tile: format.py promises a KPI reads the same on both surfaces,
+                # so this must not fall on money()'s 2-decimal side for a small net.
+                "net": money(entry.net_value, currency, 0),
                 "health_css": css,
                 "health": label,
             }
