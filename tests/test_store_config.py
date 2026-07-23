@@ -132,6 +132,31 @@ def test_partial_data_rules_keep_conservative_defaults(tmp_path):
     rules = loaded.config.policy.data_rules
     assert rules["restricted"].models == ["mock-frontier-eu"]  # the override took
     assert rules["internal"].forbid_training_vendors  # the default survived
+    # …and the OVERRIDDEN class keeps its own conservative guards too: adding an
+    # allowlist to 'restricted' must not silently drop its no-training-vendor rule.
+    assert rules["restricted"].forbid_training_vendors
+
+
+def test_partial_override_keeps_the_same_class_training_guard(tmp_path):
+    # Tightening one axis of a class (pin a region for 'internal') must not silently
+    # drop that class's OTHER conservative guards. Otherwise an override meant to
+    # TIGHTEN policy would quietly let internal data reach a training vendor.
+    org = dict(ORG)
+    org["policy"] = {"data_rules": {"internal": {"regions": ["eu"]}}}
+    loaded = load_org(write_org(tmp_path / "org", org=org))
+    rule = loaded.config.policy.data_rules["internal"]
+    assert rule.regions == ["eu"]  # the override took
+    assert rule.forbid_training_vendors is True  # the conservative guard survived
+
+
+def test_data_rule_ungoverning_must_be_explicit(tmp_path):
+    # Un-governing is allowed, but only when written out loud in the org file —
+    # an explicit forbid_training_vendors: false is honored (and stays a visible,
+    # authored diff), unlike the silent loosening a bare partial override used to do.
+    org = dict(ORG)
+    org["policy"] = {"data_rules": {"internal": {"forbid_training_vendors": False}}}
+    loaded = load_org(write_org(tmp_path / "org", org=org))
+    assert loaded.config.policy.data_rules["internal"].forbid_training_vendors is False
 
 
 def test_eligible_users_falls_back_to_department_headcount(org):
