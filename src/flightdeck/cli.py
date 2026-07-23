@@ -434,12 +434,16 @@ def report(
         console.print_json(json.dumps(dataclasses.asdict(data), default=str))
     else:
         terminal.render(data, ranked, console)
+    # --json is a pipeline feature: stdout must stay a single valid JSON document,
+    # so the "also wrote …" confirmations go to stderr when it is set. Without --json
+    # they stay on stdout, next to the human-readable report.
+    notify = err if as_json else console
     if html is not None:
         html.write_text(html_report.render(org, data, ranked), encoding="utf-8")
-        console.print(f"[green]✓[/green] dashboard: [bold]{html}[/bold]")
+        notify.print(f"[green]✓[/green] dashboard: [bold]{html}[/bold]")
     if csv is not None:
         csv.write_text(csv_export.render(statement or []), encoding="utf-8")
-        console.print(f"[green]✓[/green] finance statement: [bold]{csv}[/bold]")
+        notify.print(f"[green]✓[/green] finance statement: [bold]{csv}[/bold]")
 
 
 @app.command("policy")
