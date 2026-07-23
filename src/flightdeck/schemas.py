@@ -136,10 +136,35 @@ class PolicyConfig(StrictModel):
                 raise ValueError(f"invalid regex {pattern!r}: {exc}") from None
         return patterns
 
+    @model_validator(mode="before")
+    @classmethod
+    def _merge_partial_data_rules(cls, data: object) -> object:
+        # A per-class override in YAML usually tightens ONE axis (e.g. pin a region);
+        # it must not silently drop the class's other conservative guards. Merge each
+        # override onto that class's conservative default, so an unspecified field
+        # keeps the strict default (notably forbid_training_vendors=True for
+        # internal/confidential/restricted) instead of reverting to DataRule's
+        # permissive field default. Un-governing stays possible, but only when the
+        # org writes it out loud (e.g. forbid_training_vendors: false) — never by
+        # omission. Absent classes are still filled whole by _fill_missing_classes.
+        if isinstance(data, dict) and isinstance(data.get("data_rules"), dict):
+            defaults = default_data_rules()
+            merged = {}
+            for name, override in data["data_rules"].items():
+                base = defaults.get(name)
+                if base is not None and isinstance(override, dict):
+                    merged[name] = {**base.model_dump(), **override}
+                else:
+                    merged[name] = override
+            data = {**data, "data_rules": merged}
+        return data
+
     @model_validator(mode="after")
     def _fill_missing_classes(self) -> "PolicyConfig":
-        # A partial data_rules block in YAML falls back to the conservative default
-        # per class, so overriding "restricted" never silently un-governs "internal".
+        # A data_rules block that omits a class entirely falls back to the
+        # conservative default for it, so overriding "restricted" never silently
+        # un-governs "internal". (Present-but-partial classes are merged onto their
+        # defaults in _merge_partial_data_rules, above.)
         defaults = default_data_rules()
         for cls, rule in defaults.items():
             self.data_rules.setdefault(cls, rule)  # type: ignore[arg-type]
