@@ -35,6 +35,12 @@ class OpenAIProvider:
             raise ProviderError(f"openai: {exc}") from exc
 
         usage = response.usage
+        if not response.choices:
+            # An empty `choices` on a 200 — some OpenAI-compatible gateways/proxies
+            # return one — is a vendor-side failure, not a flightdeck defect. Surface
+            # it through the adapter's ProviderError contract with a human-actionable
+            # message, never as a raw IndexError from choices[0].
+            raise ProviderError("openai: response contained no choices")
         return Completion(
             text=response.choices[0].message.content or "",
             tokens_in=usage.prompt_tokens if usage else 0,
