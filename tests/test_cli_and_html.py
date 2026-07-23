@@ -122,6 +122,30 @@ def test_run_feedback_report_loop_offline(tmp_path):
     assert "chain intact" in result.output
 
 
+def test_report_json_with_html_keeps_stdout_valid_json(tmp_path):
+    # --json is documented "for pipelines": `report --json --html x > data.json` must
+    # leave stdout a single valid JSON document. The "wrote dashboard/statement"
+    # confirmations must go to stderr, not get appended after the JSON. Run the real
+    # CLI in a subprocess so stdout/stderr are genuinely separate OS streams (the
+    # in-process CliRunner does not separate rich's stderr console).
+    import subprocess
+    import sys
+
+    root = _init(tmp_path)
+    html_path = tmp_path / "dash.html"
+    csv_path = tmp_path / "statement.csv"
+    proc = subprocess.run(
+        [sys.executable, "-c", "from flightdeck.cli import app; app()",
+         "report", "--dir", str(root), "--json", "--html", str(html_path), "--csv", str(csv_path)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)  # stdout (fd 1) is clean JSON, not JSON + confirmations
+    assert "workflows" in data
+    assert "dashboard" in proc.stderr  # the confirmation went to stderr instead
+    assert html_path.exists() and csv_path.exists()  # the files were still written
+
+
 def test_report_csv_emits_a_parseable_finance_statement(tmp_path):
     root = _init(tmp_path)
     result = invoke(
