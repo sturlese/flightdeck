@@ -52,6 +52,23 @@ def test_api_secret():
     assert "[REDACTED:secret]" in result.text
 
 
+def test_secret_does_not_eat_hyphenated_prose():
+    # The secret pattern targets high-entropy vendor keys, not ordinary hyphenated
+    # English that merely starts with a prefix word. Redacting prose deletes
+    # legitimate text — the "mangles the prompt" failure the module avoids.
+    for phrase in (
+        "we use token-based-authentication-flow here",
+        "a key-value-store-implementation detail",
+        "the pk-anonymization-strategy applies",
+    ):
+        result = redact(phrase)
+        assert result.text == phrase, f"prose was redacted: {phrase!r}"
+        assert "secret" not in result.by_kind
+    # …but a real, high-entropy key with the same prefix is still caught.
+    hit = redact("rotate sk-live-abc123def456ghi789 now")
+    assert "[REDACTED:secret]" in hit.text
+
+
 def test_spanish_dni():
     result = redact("DNI 12345678Z attached")
     assert "[REDACTED:dni]" in result.text
