@@ -203,6 +203,23 @@ class TestBuildReport:
         entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
         assert entry.health == "underperforming"
 
+    def test_review_free_workflow_does_not_mask_a_failing_weekly_target(self, org, store, ledger):
+        # A review-free workflow never produces acceptance feedback, so its acceptance
+        # axis is unmeasurable by design — it must not swallow a declared, failing
+        # weekly-actives target and report "no_target" (the review=none sibling of the
+        # zero-acceptance-target case above).
+        wf = org.workflows["support-reply"].model_copy(
+            update={
+                "review": "none",
+                "success": SuccessCriteria(acceptance_target=0.8, weekly_active_users_target=6),
+            }
+        )
+        org.workflows["support-reply"] = wf
+        store.add_run(_run("r", NOW - timedelta(days=9), user="ana"))  # ~1 weekly active vs target 6
+        report = build_report(org, store, ledger, days=30, now=NOW)
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+        assert entry.health == "underperforming"
+
 
 class TestMonthlyCap:
     def test_runaway_duplicates_cannot_inflate_savings(self, org):
