@@ -20,6 +20,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.rule import Rule
 from rich.table import Table
 
@@ -176,7 +177,7 @@ def backlog_cmd(
         table.add_column(column, justify=justify, header_style="dim")
     for index, item in enumerate(ranked, 1):
         table.add_row(
-            str(index), f"{item.case.name} [dim]{item.case.id}[/dim]", item.case.department,
+            str(index), f"{escape(item.case.name)} [dim]{item.case.id}[/dim]", escape(item.case.department),
             item.case.status, money(item.monthly_value, org.config.currency, 0),
             f"×{item.feasibility:.2f}", f"×{item.risk_discount:.2f}",
             f"{item.case.effort_weeks:g}wk", f"[bold]{item.score:,.0f}[/bold]",
@@ -285,7 +286,10 @@ def run(
         try:
             result = execute(org, workflow, variables, attributed, store, ledger)
         except VariableError as exc:
-            err.print(f"[red]{exc}[/red] — this workflow needs: {', '.join(required_vars(workflow))}")
+            err.print(
+                f"[red]{escape(str(exc))}[/red] — this workflow needs: "
+                f"{escape(', '.join(required_vars(workflow)))}"
+            )
             raise typer.Exit(2) from None
 
     if result.status == "completed":
@@ -361,8 +365,8 @@ def tick(
                 # still sees the config error.
                 config_errors += 1
                 err.print(
-                    f"[red]config error:[/red] {workflow.id}: {exc} — declare them under "
-                    f"[bold]schedule.vars[/bold] (needs: {', '.join(required_vars(workflow))})"
+                    f"[red]config error:[/red] {workflow.id}: {escape(str(exc))} — declare them under "
+                    f"[bold]schedule.vars[/bold] (needs: {escape(', '.join(required_vars(workflow)))})"
                 )
                 continue
             if result.status == "completed":
@@ -462,17 +466,19 @@ def policy_check(
         err.print(f"[red]unknown workflow:[/red] '{workflow_id}'")
         raise typer.Exit(2)
 
-    console.print(f"\n[bold]{workflow.name}[/bold] · {workflow.department} · tier [bold]{workflow.tier}[/bold]")
+    console.print(
+        f"\n[bold]{escape(workflow.name)}[/bold] · {escape(workflow.department)} · tier [bold]{workflow.tier}[/bold]"
+    )
     rule = org.config.policy.data_rules[workflow.data_classification]
     constraints = []
     if rule.forbid_training_vendors:
         constraints.append("no vendors that train on data")
     if rule.regions is not None:
-        constraints.append(f"regions: {', '.join(rule.regions)}")
+        constraints.append(f"regions: {escape(', '.join(rule.regions))}")
     if rule.providers is not None:
-        constraints.append(f"providers: {', '.join(rule.providers)}")
+        constraints.append(f"providers: {escape(', '.join(rule.providers))}")
     if rule.models is not None:
-        constraints.append(f"explicit allowlist: {', '.join(rule.models) or '(empty — fails closed)'}")
+        constraints.append(f"explicit allowlist: {escape(', '.join(rule.models)) or '(empty — fails closed)'}")
     console.print(
         f"  data class [bold]{workflow.data_classification}[/bold] → "
         + ("; ".join(constraints) if constraints else "no constraints")
@@ -487,7 +493,7 @@ def policy_check(
         table.add_column(column, header_style="dim")
     for spec in cleared:
         table.add_row(
-            spec.id, spec.tier, spec.region, "yes" if spec.trains_on_data else "no",
+            spec.id, spec.tier, escape(spec.region), "yes" if spec.trains_on_data else "no",
             f"{spec.input_cost_per_mtok:g} + {spec.output_cost_per_mtok:g}",
         )
     console.print(table)
@@ -495,7 +501,7 @@ def policy_check(
     try:
         route = pick(cleared, workflow.tier)
         escalation = " [yellow](escalated: requested tier had no compliant model)[/yellow]" if route.escalated else ""
-        console.print(f"  route → [bold]{route.spec.id}[/bold] ({route.spec.model}){escalation}")
+        console.print(f"  route → [bold]{route.spec.id}[/bold] ({escape(route.spec.model)}){escalation}")
     except NoRouteError as exc:
         console.print(f"  [red bold]✕ {exc}[/red bold]")
         raise typer.Exit(1) from None
@@ -549,7 +555,9 @@ def audit_tail(
     for entry in entries:
         stamp = entry["at"][:16].replace("T", " ")
         summary = {k: v for k, v in entry["data"].items() if k != "output_sha256"}
-        console.print(f"[dim]{entry['seq']:>6} {stamp}[/dim]  [bold]{entry['event']}[/bold]  {summary}")
+        console.print(
+            f"[dim]{entry['seq']:>6} {stamp}[/dim]  [bold]{entry['event']}[/bold]  {escape(str(summary))}"
+        )
     if not all_entries:
         console.print("[dim]ledger is empty[/dim]")
 
@@ -611,7 +619,7 @@ def slack_handle(
             err.print(f"[red]cannot record feedback:[/red] {exc}")
             raise typer.Exit(2) from None
     console.print(
-        f"[green]✓[/green] recorded via Slack: {entry.run_id} → [bold]{entry.outcome}[/bold] by {entry.by}"
+        f"[green]✓[/green] recorded via Slack: {entry.run_id} → [bold]{entry.outcome}[/bold] by {escape(entry.by)}"
         + (f" ({entry.human_minutes:g} min)" if entry.human_minutes is not None else "")
     )
 

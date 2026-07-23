@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from flightdeck.backlog import ScoredUseCase
@@ -27,7 +28,7 @@ def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) ->
     gov = report.governance
 
     console.print()
-    console.print(f"[bold]{report.org_name}[/bold] · AI program · last {report.window_days} days")
+    console.print(f"[bold]{escape(report.org_name)}[/bold] · AI program · last {report.window_days} days")
     ledger_state = (
         f"[green]✓ ledger verified[/green] · {gov.ledger_entries:,} entries"
         if gov.ledger_ok
@@ -69,7 +70,7 @@ def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) ->
     for entry in report.workflows:
         css, label = HEALTH_LABELS[entry.health]
         table.add_row(
-            entry.name,
+            escape(entry.name),
             entry.data_classification,
             f"{entry.runs_completed:,}",
             str(entry.active_users),
@@ -89,7 +90,7 @@ def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) ->
     )
     if gov.region_mix:
         total = sum(gov.region_mix.values())
-        mix = " · ".join(f"{region} {count / total:.0%}" for region, count in sorted(gov.region_mix.items()))
+        mix = " · ".join(f"{escape(region)} {count / total:.0%}" for region, count in sorted(gov.region_mix.items()))
         training = f"{gov.no_training_share:.0%}" if gov.no_training_share is not None else "—"
         console.print(f"[dim]residency[/dim]   {mix} · non-training vendors {training}")
 
@@ -103,7 +104,7 @@ def render(report: OrgReport, backlog: list[ScoredUseCase], console: Console) ->
             ranked.add_column(column, justify=justify, header_style="dim")
         for item in backlog[:5]:
             ranked.add_row(
-                f"{item.case.name} [dim]({item.case.department})[/dim]",
+                f"{escape(item.case.name)} [dim]({escape(item.case.department)})[/dim]",
                 money(item.monthly_value, currency, 0),
                 f"×{item.feasibility:.2f}",
                 f"×{item.risk_discount:.2f}",

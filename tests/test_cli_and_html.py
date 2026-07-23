@@ -267,6 +267,114 @@ def test_backlog_command_ranks(tmp_path):
     assert "promote the winner" in result.output
 
 
+def test_backlog_survives_rich_markup_in_a_use_case_name(tmp_path):
+    # Use-case names are operator free text; a name shaped like a rich closing tag
+    # ("Purge [/tmp] files") must render literally, not be parsed as console markup
+    # and crash the command with a MarkupError. The HTML report already escapes such
+    # names; the terminal path must too.
+    root = _init(tmp_path)
+    usecases = yaml.safe_load((root / "usecases.yaml").read_text())
+    usecases["usecases"][0]["name"] = "Purge [/tmp] scratch files"
+    usecases["usecases"][0]["department"] = "Ops [/eng]"
+    (root / "usecases.yaml").write_text(yaml.safe_dump(usecases))
+
+    result = invoke("backlog", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+    assert "/tmp" in result.output  # the name rendered instead of crashing
+
+
+def test_report_survives_rich_markup_in_a_workflow_name(tmp_path):
+    # The terminal report table renders the workflow name; a markup-shaped name must
+    # not crash the headline `report` command.
+    root = _init(tmp_path)
+    workflow_path = root / "workflows" / "meeting-minutes.yaml"
+    spec = yaml.safe_load(workflow_path.read_text())
+    spec["name"] = "Notes [/x] drafting"
+    workflow_path.write_text(yaml.safe_dump(spec))
+    invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=hello")
+
+    result = invoke("report", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+
+
+def test_terminal_report_escapes_markup_in_org_name_and_region_mix(org, store, ledger):
+    # The report banner (org name) and the residency line (region_mix keys) are also
+    # operator/registry free text rendered as rich markup on EVERY report — a
+    # closing-tag fragment there must render literally, not raise MarkupError.
+    import io
+
+    from rich.console import Console
+
+    from flightdeck.report import terminal
+
+    report = build_report(org, store, ledger)
+    report.org_name = "Acme [/tmp] Corp"
+    report.governance.region_mix = {"eu [/x]": 1}
+    console = Console(file=io.StringIO())
+    terminal.render(report, [], console)  # must not raise MarkupError
+    out = console.file.getvalue()
+    assert "Acme" in out and "eu" in out
+
+
+def test_policy_check_survives_markup_in_workflow_name(tmp_path):
+    # `policy check` prints the workflow name/department as rich markup in its header.
+    root = _init(tmp_path)
+    workflow_path = root / "workflows" / "meeting-minutes.yaml"
+    spec = yaml.safe_load(workflow_path.read_text())
+    spec["name"] = "Minutes [/x]"
+    workflow_path.write_text(yaml.safe_dump(spec))
+
+    result = invoke("policy", "check", "meeting-minutes", "--dir", str(root))
+    assert result.exit_code == 0, result.output
+    assert "Minutes" in result.output
+
+
+def test_policy_check_escapes_markup_in_data_rule_constraints(tmp_path):
+    # The constraints summary joins operator-authored region/provider/model lists into
+    # rich markup; a markup fragment there must render literally, not crash the command.
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    fd = yaml.safe_load((root / "flightdeck.yaml").read_text())
+    fd.setdefault("policy", {}).setdefault("data_rules", {})["internal"] = {"regions": ["eu [/x]"]}
+    (root / "flightdeck.yaml").write_text(yaml.safe_dump(fd))
+
+    result = invoke("policy", "check", "meeting-minutes", "--dir", str(root))
+    # No model matches the odd region, so it legitimately exits 1 — but it must render
+    # the constraints line, not abort with a MarkupError.
+    assert not isinstance(result.exception, MarkupError)
+    assert "regions:" in result.output
+
+
+def test_run_missing_var_error_survives_markup_in_a_var_name(tmp_path):
+    # A declared step-var name is operator free text surfaced by the missing-variable
+    # error path. A bracketed name must not turn that user error into a MarkupError crash.
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    wf_path = root / "workflows" / "meeting-minutes.yaml"
+    spec = yaml.safe_load(wf_path.read_text())
+    spec["steps"][0]["vars"].append("detail[/x]")  # declared but never passed
+    wf_path.write_text(yaml.safe_dump(spec))
+
+    result = invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=hello")
+    assert not isinstance(result.exception, MarkupError)
+    assert result.exit_code == 2  # the clean "missing variable(s)" user error
+
+
+def test_audit_tail_survives_markup_in_a_recorded_user(tmp_path):
+    # The run actor (--user) is recorded in the ledger and rendered by `audit tail`
+    # as part of the entry data; a markup fragment in it must not crash the command.
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=hi", "--user", "emp[/x]")
+
+    result = invoke("audit", "tail", "-n", "5", "--dir", str(root))
+    assert not isinstance(result.exception, MarkupError)
+    assert result.exit_code == 0, result.output
+
+
 def test_audit_tail_n_zero_shows_nothing(tmp_path):
     root = _init(tmp_path)
     invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=hello")
