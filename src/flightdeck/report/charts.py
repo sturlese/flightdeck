@@ -40,6 +40,15 @@ def _fmt(value: float, decimals: int | None = None) -> str:
     return f"{value:,.{decimals}f}"
 
 
+def _money(value: float, unit: str) -> str:
+    """A currency label that matches format.money's cross-surface contract: the
+    U+2212 minus sits BEFORE the symbol (not an ASCII '€-5,000'), and a value that
+    rounds to zero is unsigned. Used for the hbar net labels, which share a page
+    with the workflow table that formats the same numbers through format.money."""
+    negative = round(value) < 0
+    return f"{'−' if negative else ''}{unit}{_fmt(abs(value))}"
+
+
 def _grid_and_axis(top: float, unit: str, plot_h: float) -> str:
     parts = []
     for index in range(1, 4):  # 3 hairlines + baseline
@@ -176,12 +185,13 @@ def hbar_chart(items: list[tuple[str, float]], unit: str) -> str:
                 f"H{x + w:.1f} Z"
             )
             value_x, anchor = x - 8, "end"
-        tip = _tip(name, [("net value", f"{unit}{_fmt(value)}", "s1")])
+        label = _money(value, unit)
+        tip = _tip(name, [("net value", label, "s1")])
         mid = y + bar_h / 2 + 4
         rows.append(
             f'<text class="fd-cat" x="{label_w - 10}" y="{mid}" text-anchor="end">{escape(name)}</text>'
             f'<path class="fd-bar" d="{path}" data-tip="{tip}" tabindex="0"/>'
-            f'<text class="fd-value" x="{value_x:.1f}" y="{mid}" text-anchor="{anchor}">{unit}{_fmt(value)}</text>'
+            f'<text class="fd-value" x="{value_x:.1f}" y="{mid}" text-anchor="{anchor}">{label}</text>'
         )
     axis = f'<line class="fd-axis" x1="{x_zero:.1f}" y1="2" x2="{x_zero:.1f}" y2="{height - 2}"/>'
     return (
