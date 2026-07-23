@@ -178,11 +178,18 @@ def _health(workflow: Workflow, report: WorkflowReport) -> Health:
     targets: list[float] = []
     if workflow.success.acceptance_target is not None:
         if report.acceptance_rate is None:
-            return "no_data" if workflow.review != "none" else "no_target"
-        target = workflow.success.acceptance_target
-        # A target of 0 (schema-legal: ge=0) is a bar any acceptance rate clears —
-        # the ratio is "met", not a division by zero that crashes the whole report.
-        targets.append(report.acceptance_rate / target if target > 0 else 1.0)
+            # A human-reviewed workflow with no reviews yet is a transient "no_data"
+            # state (docs/metrics.md). A review-free workflow NEVER produces acceptance
+            # feedback by design, so its acceptance axis is permanently unmeasurable —
+            # skip it and let any other declared target (weekly actives) decide, rather
+            # than masking a failing target as "no_target".
+            if workflow.review != "none":
+                return "no_data"
+        else:
+            target = workflow.success.acceptance_target
+            # A target of 0 (schema-legal: ge=0) is a bar any acceptance rate clears —
+            # the ratio is "met", not a division by zero that crashes the whole report.
+            targets.append(report.acceptance_rate / target if target > 0 else 1.0)
     if workflow.success.weekly_active_users_target is not None and report.weekly_active_avg is not None:
         targets.append(report.weekly_active_avg / workflow.success.weekly_active_users_target)
     if not targets:
