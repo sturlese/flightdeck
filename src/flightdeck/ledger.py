@@ -14,11 +14,13 @@ entry 0 records where the data came from.
 
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 GENESIS = "0" * 64
+_ENTRY_FIELDS = ("seq", "at", "event", "data", "prev", "hash")
 
 
 def _canonical(data: dict) -> str:
@@ -28,6 +30,22 @@ def _canonical(data: dict) -> str:
 def _entry_hash(seq: int, at: str, event: str, data: dict, prev: str) -> str:
     payload = f"{seq}|{at}|{event}|{_canonical(data)}|{prev}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _entry_shape_error(entry: object) -> str | None:
+    if not isinstance(entry, dict):
+        return "invalid entry: expected a JSON object"
+    missing = [field for field in _ENTRY_FIELDS if field not in entry]
+    if missing:
+        return f"invalid entry: missing field(s): {', '.join(missing)}"
+    if type(entry["seq"]) is not int:
+        return "invalid entry: field 'seq' must be an integer"
+    for field in ("at", "event", "prev", "hash"):
+        if not isinstance(entry[field], str):
+            return f"invalid entry: field '{field}' must be a string"
+    if not isinstance(entry["data"], dict):
+        return "invalid entry: field 'data' must be a JSON object"
+    return None
 
 
 @dataclass
@@ -75,28 +93,59 @@ class Ledger:
         return entry
 
     def entries(self) -> list[dict]:
+        return [json.loads(line.decode("utf-8")) for line in self._entry_lines()]
+
+    def _entry_lines(self) -> Iterator[bytes]:
         if not self.path.exists():
-            return []
-        out = []
-        with self.path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if line:
-                    out.append(json.loads(line))
-        return out
+            return
+        with self.path.open("rb") as fh:
+            for raw_line in fh:
+                if line := raw_line.strip():
+                    yield line
 
     def verify(self) -> VerifyResult:
         """Re-walk the chain: sequence must be gapless from 0, each prev must match
         the previous hash, each hash must recompute. First break wins."""
-        entries = self.entries()
+        entry_count = 0
+        failure: tuple[int, str] | None = None
         prev = GENESIS
-        for index, entry in enumerate(entries):
+        for index, line in enumerate(self._entry_lines()):
+            entry_count += 1
+            if failure is not None:
+                continue
+            try:
+                text = line.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                failure = (index, f"invalid UTF-8: {exc.reason}")
+                continue
+            try:
+                entry = json.loads(text)
+            except json.JSONDecodeError as exc:
+                failure = (index, f"invalid JSON: {exc.msg}")
+                continue
+            except (RecursionError, ValueError) as exc:
+                failure = (index, f"invalid JSON: {exc}")
+                continue
+            if shape_error := _entry_shape_error(entry):
+                failure = (index, shape_error)
+                continue
             if entry["seq"] != index:
-                return VerifyResult(len(entries), False, entry["seq"], "sequence gap or reorder")
+                failure = (entry["seq"], "sequence gap or reorder")
+                continue
             if entry["prev"] != prev:
-                return VerifyResult(len(entries), False, entry["seq"], "broken chain link")
-            expected = _entry_hash(entry["seq"], entry["at"], entry["event"], entry["data"], entry["prev"])
+                failure = (entry["seq"], "broken chain link")
+                continue
+            try:
+                expected = _entry_hash(
+                    entry["seq"], entry["at"], entry["event"], entry["data"], entry["prev"]
+                )
+            except (RecursionError, UnicodeEncodeError, ValueError) as exc:
+                failure = (entry["seq"], f"invalid entry: {exc}")
+                continue
             if entry["hash"] != expected:
-                return VerifyResult(len(entries), False, entry["seq"], "entry hash mismatch")
+                failure = (entry["seq"], "entry hash mismatch")
+                continue
             prev = entry["hash"]
-        return VerifyResult(len(entries), True)
+        if failure is not None:
+            return VerifyResult(entry_count, False, *failure)
+        return VerifyResult(entry_count, True)

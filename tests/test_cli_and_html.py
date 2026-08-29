@@ -4,6 +4,7 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -120,6 +121,43 @@ def test_run_feedback_report_loop_offline(tmp_path):
     result = invoke("audit", "verify", "--dir", str(root))
     assert result.exit_code == 0
     assert "chain intact" in result.output
+
+
+@pytest.mark.parametrize(
+    ("corruption", "reason"),
+    [
+        ("shape", "invalid entry"),
+        ("utf16", "invalid UTF-8"),
+        ("huge_integer", "invalid JSON"),
+        ("surrogate", "invalid entry"),
+    ],
+)
+def test_audit_and_report_survive_an_invalid_ledger_entry(tmp_path, corruption, reason):
+    root = _init(tmp_path)
+    org = load_org(root)
+    if corruption == "utf16":
+        Ledger(org.ledger_path).append("event", {"n": 0})
+        record = org.ledger_path.read_text(encoding="utf-8").strip()
+        org.ledger_path.write_bytes(record.encode("utf-16"))
+    elif corruption == "huge_integer":
+        org.ledger_path.write_text('{"seq":' + "9" * 5000 + "}\n", encoding="utf-8")
+    elif corruption == "surrogate":
+        org.ledger_path.write_text(
+            '{"seq":0,"at":"2026-08-29T20:00:00+00:00","event":"\\ud800",'
+            '"data":{},"prev":"' + "0" * 64 + '","hash":"x"}\n',
+            encoding="utf-8",
+        )
+    else:
+        org.ledger_path.write_text("[]\n", encoding="utf-8")
+
+    audit = invoke("audit", "verify", "--dir", str(root))
+    assert audit.exit_code == 1
+    assert "INTEGRITY FAILURE" in audit.output
+    assert reason in audit.output
+
+    report = invoke("report", "--dir", str(root))
+    assert report.exit_code == 0, report.output
+    assert "LEDGER INTEGRITY FAILED" in report.output
 
 
 def test_report_json_with_html_keeps_stdout_valid_json(tmp_path):
