@@ -10,8 +10,10 @@ loudly with the offending file in the message. Runtime state (runs.sqlite3,
 ledger.jsonl) lives under .flightdeck/ and is never committed.
 """
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar
 
 import yaml
 from pydantic import ValidationError
@@ -25,6 +27,8 @@ USECASES_FILE = "usecases.yaml"
 DIRECTORY_FILE = "directory.yaml"
 WORKFLOWS_DIR = "workflows"
 STATE_DIR = ".flightdeck"
+
+ConfigItem = TypeVar("ConfigItem", ModelSpec, UseCase, Workflow)
 
 
 class ConfigError(Exception):
@@ -100,6 +104,37 @@ def _validation_error(path: Path, exc: ValidationError) -> ConfigError:
     return ConfigError(f"{path}: invalid configuration\n" + "\n".join(lines))
 
 
+def _load_indexed_items(
+    raw_items: Iterable[object],
+    *,
+    path: Path,
+    item_type: type[ConfigItem],
+    kind: str,
+    items: dict[str, ConfigItem] | None = None,
+    before_index: Callable[[ConfigItem], None] | None = None,
+) -> dict[str, ConfigItem]:
+    """Validate and index config items, rejecting duplicate IDs at their source."""
+    indexed = items if items is not None else {}
+    for raw_item in raw_items:
+        try:
+            item = item_type.model_validate(raw_item)
+        except ValidationError as exc:
+            raise _validation_error(path, exc) from None
+        if item.id in indexed:
+            raise ConfigError(f"{path}: duplicate {kind} id '{item.id}'")
+        if before_index:
+            before_index(item)
+        indexed[item.id] = item
+    return indexed
+
+
+def _validate_workflow_use_case(
+    workflow: Workflow, path: Path, usecases: dict[str, UseCase]
+) -> None:
+    if workflow.use_case and workflow.use_case not in usecases:
+        raise ConfigError(f"{path}: use_case '{workflow.use_case}' not found in {USECASES_FILE}")
+
+
 def load_org(root: Path | str) -> Org:
     """Load and cross-validate an org directory. Workflows and use cases are
     optional (a fresh org starts empty); the org file and model registry are not."""
@@ -116,45 +151,39 @@ def load_org(root: Path | str) -> Org:
         raise _validation_error(org_path, exc) from None
 
     models_path = root / MODELS_FILE
-    models: dict[str, ModelSpec] = {}
-    for item in _read_yaml(models_path).get("models") or []:
-        try:
-            spec = ModelSpec.model_validate(item)
-        except ValidationError as exc:
-            raise _validation_error(models_path, exc) from None
-        if spec.id in models:
-            raise ConfigError(f"{models_path}: duplicate model id '{spec.id}'")
-        models[spec.id] = spec
+    models = _load_indexed_items(
+        _read_yaml(models_path).get("models") or [],
+        path=models_path,
+        item_type=ModelSpec,
+        kind="model",
+    )
     if not models:
         raise ConfigError(f"{models_path}: the model registry is empty")
 
     usecases: dict[str, UseCase] = {}
     usecases_path = root / USECASES_FILE
     if usecases_path.exists():
-        for item in _read_yaml(usecases_path).get("usecases") or []:
-            try:
-                case = UseCase.model_validate(item)
-            except ValidationError as exc:
-                raise _validation_error(usecases_path, exc) from None
-            if case.id in usecases:
-                raise ConfigError(f"{usecases_path}: duplicate use case id '{case.id}'")
-            usecases[case.id] = case
+        usecases = _load_indexed_items(
+            _read_yaml(usecases_path).get("usecases") or [],
+            path=usecases_path,
+            item_type=UseCase,
+            kind="use case",
+        )
 
     workflows: dict[str, Workflow] = {}
     workflows_dir = root / WORKFLOWS_DIR
     if workflows_dir.is_dir():
         for path in sorted(workflows_dir.glob("*.yaml")) + sorted(workflows_dir.glob("*.yml")):
-            try:
-                workflow = Workflow.model_validate(_read_yaml(path))
-            except ValidationError as exc:
-                raise _validation_error(path, exc) from None
-            if workflow.id in workflows:
-                raise ConfigError(f"{path}: duplicate workflow id '{workflow.id}'")
-            if workflow.use_case and workflow.use_case not in usecases:
-                raise ConfigError(
-                    f"{path}: use_case '{workflow.use_case}' not found in {USECASES_FILE}"
-                )
-            workflows[workflow.id] = workflow
+            _load_indexed_items(
+                [_read_yaml(path)],
+                path=path,
+                item_type=Workflow,
+                kind="workflow",
+                items=workflows,
+                before_index=lambda workflow, workflow_path=path: _validate_workflow_use_case(
+                    workflow, workflow_path, usecases
+                ),
+            )
 
     # Optional SSO directory snapshot (like usecases.yaml, absent is fine).
     directory = Directory.from_file(root / DIRECTORY_FILE)
