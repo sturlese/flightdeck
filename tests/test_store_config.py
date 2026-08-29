@@ -5,7 +5,7 @@ import yaml
 
 from flightdeck.config import ConfigError, load_org
 from flightdeck.schemas import Feedback, Run
-from tests.conftest import ORG, SUPPORT_WORKFLOW, write_org
+from tests.conftest import MODELS, ORG, SUPPORT_WORKFLOW, write_org
 
 
 def _run(run_id: str, when: datetime, **overrides) -> Run:
@@ -67,6 +67,23 @@ def test_month_cost_sums_only_that_month(store):
 # ------------------------------------------------------------------ config loading
 
 
+def _use_case(**overrides):
+    fields = {
+        "id": "ticket-triage",
+        "name": "Ticket triage",
+        "department": "Support",
+        "task_minutes": 8,
+        "tasks_per_month": 200,
+        "automation_potential": 0.6,
+        "data_readiness": 4,
+        "process_stability": 4,
+        "risk": 2,
+        "effort_weeks": 3,
+    }
+    fields.update(overrides)
+    return fields
+
+
 def test_missing_org_file_suggests_init(tmp_path):
     with pytest.raises(ConfigError, match="flightdeck init"):
         load_org(tmp_path)
@@ -82,8 +99,13 @@ def test_unknown_keys_fail_loudly(tmp_path):
 def test_dangling_use_case_reference_fails(tmp_path):
     workflow = dict(SUPPORT_WORKFLOW)
     workflow["use_case"] = "does-not-exist"
-    with pytest.raises(ConfigError, match="does-not-exist"):
-        load_org(write_org(tmp_path / "org", workflows=[workflow]))
+    root = write_org(tmp_path / "org", workflows=[workflow])
+    path = root / "workflows" / "support-reply.yaml"
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    assert str(excinfo.value) == f"{path}: use_case 'does-not-exist' not found in usecases.yaml"
 
 
 def test_empty_model_registry_fails(tmp_path):
@@ -91,6 +113,127 @@ def test_empty_model_registry_fails(tmp_path):
     (root / "models.yaml").write_text(yaml.safe_dump({"models": []}), encoding="utf-8")
     with pytest.raises(ConfigError, match="registry is empty"):
         load_org(root)
+
+
+@pytest.mark.parametrize("registry", [{}, {"models": None}])
+def test_missing_or_null_model_collection_is_an_empty_registry(tmp_path, registry):
+    root = write_org(tmp_path / "org")
+    (root / "models.yaml").write_text(yaml.safe_dump(registry), encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"models\.yaml: the model registry is empty"):
+        load_org(root)
+
+
+@pytest.mark.parametrize("collection", [{}, {"usecases": None}])
+def test_missing_or_null_use_case_collection_loads_empty(tmp_path, collection):
+    root = write_org(tmp_path / "org", workflows=[])
+    (root / "usecases.yaml").write_text(yaml.safe_dump(collection), encoding="utf-8")
+
+    assert load_org(root).usecases == {}
+
+
+def test_absent_workflow_directory_loads_empty(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+
+    assert not (root / "workflows").exists()
+    assert load_org(root).workflows == {}
+
+
+def test_invalid_model_reports_the_model_registry_path(tmp_path):
+    model = {**MODELS[0], "tier": "unsupported"}
+    root = write_org(tmp_path / "org", models=[model])
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    message = str(excinfo.value)
+    assert str(root / "models.yaml") in message
+    assert "invalid configuration" in message
+    assert "tier" in message
+
+
+def test_duplicate_model_id_reports_kind_and_registry_path(tmp_path):
+    root = write_org(tmp_path / "org", models=[dict(MODELS[0]), dict(MODELS[0])])
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    assert str(excinfo.value) == f"{root / 'models.yaml'}: duplicate model id 'mock-fast-eu'"
+
+
+def test_invalid_use_case_reports_the_use_case_path(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+    (root / "usecases.yaml").write_text(
+        yaml.safe_dump({"usecases": [_use_case(task_minutes=0)]}), encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    message = str(excinfo.value)
+    assert str(root / "usecases.yaml") in message
+    assert "invalid configuration" in message
+    assert "task_minutes" in message
+
+
+def test_duplicate_use_case_id_reports_kind_and_use_case_path(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+    cases = [_use_case(), _use_case(name="Another triage")]
+    (root / "usecases.yaml").write_text(yaml.safe_dump({"usecases": cases}), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    assert str(excinfo.value) == f"{root / 'usecases.yaml'}: duplicate use case id 'ticket-triage'"
+
+
+@pytest.mark.parametrize("suffix", [".yaml", ".yml"])
+def test_invalid_workflow_reports_its_workflow_path(tmp_path, suffix):
+    workflow = {
+        **SUPPORT_WORKFLOW,
+        "baseline": {**SUPPORT_WORKFLOW["baseline"], "minutes_per_task": 0},
+    }
+    root = write_org(tmp_path / "org", workflows=[])
+    workflows_dir = root / "workflows"
+    workflows_dir.mkdir()
+    path = workflows_dir / f"invalid{suffix}"
+    path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    message = str(excinfo.value)
+    assert str(path) in message
+    assert "invalid configuration" in message
+    assert "baseline.minutes_per_task" in message
+
+
+def test_duplicate_workflow_id_wins_over_dangling_use_case_in_second_file(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+    workflows_dir = root / "workflows"
+    workflows_dir.mkdir()
+    first = workflows_dir / "first.yaml"
+    second = workflows_dir / "second.yaml"
+    duplicate_with_dangling_use_case = {**SUPPORT_WORKFLOW, "use_case": "does-not-exist"}
+    first.write_text(yaml.safe_dump(SUPPORT_WORKFLOW), encoding="utf-8")
+    second.write_text(yaml.safe_dump(duplicate_with_dangling_use_case), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    assert str(excinfo.value) == f"{second}: duplicate workflow id 'support-reply'"
+
+
+def test_mixed_workflow_extensions_use_yaml_then_yml_order(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+    workflows_dir = root / "workflows"
+    workflows_dir.mkdir()
+    yaml_workflow = {**SUPPORT_WORKFLOW, "id": "yaml-first"}
+    yml_workflow = {**SUPPORT_WORKFLOW, "id": "yml-second"}
+    (workflows_dir / "z.yaml").write_text(yaml.safe_dump(yaml_workflow), encoding="utf-8")
+    (workflows_dir / "a.yml").write_text(yaml.safe_dump(yml_workflow), encoding="utf-8")
+
+    assert list(load_org(root).workflows) == ["yaml-first", "yml-second"]
 
 
 def test_invalid_redact_pattern_is_a_loud_config_error(tmp_path):
