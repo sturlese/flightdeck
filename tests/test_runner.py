@@ -28,6 +28,15 @@ class EchoProvider:
         return Completion(text=f"ECHO::{prompt}", tokens_in=100, tokens_out=50)
 
 
+class CountingProvider:
+    def __init__(self):
+        self.calls = 0
+
+    def complete(self, spec: ModelSpec, prompt: str, max_output_tokens: int) -> Completion:
+        self.calls += 1
+        return Completion(text="draft", tokens_in=10, tokens_out=2)
+
+
 def test_completed_run_records_evidence_and_seals_output(org, store, ledger):
     workflow = org.workflows["support-reply"]
     run = execute(org, workflow, {"ticket": "Player cannot log in"}, "ana", store, ledger, now=NOW)
@@ -172,6 +181,82 @@ def test_undeclared_template_variable_still_raises_unrecorded(org, store, ledger
     with pytest.raises(VariableError, match="undeclared"):
         execute(org, workflow, {"ticket": "hi"}, "ana", store, ledger, now=NOW)
     assert store.runs() == []  # user errors are not governance events
+
+
+def test_invalid_later_placeholder_is_rejected_before_provider_calls(org, store, ledger):
+    workflow = Workflow.model_validate(
+        {
+            **SUPPORT_WORKFLOW,
+            "id": "broken-chain",
+            "steps": [
+                {"id": "draft", "prompt": "Draft: {{ticket}}", "vars": ["ticket"]},
+                {"id": "polish", "prompt": "Polish: {{steps.typo}}", "vars": []},
+            ],
+        }
+    )
+
+    provider = CountingProvider()
+    with pytest.raises(VariableError, match="steps.typo"):
+        execute(
+            org,
+            workflow,
+            {"ticket": "hello"},
+            "ana",
+            store,
+            ledger,
+            provider=provider,
+            now=NOW,
+        )
+
+    assert provider.calls == 0
+    assert store.runs() == []
+    assert ledger.entries() == []
+
+
+def test_external_variables_cannot_spoof_future_step_outputs(org, store, ledger):
+    workflow = Workflow.model_validate(
+        {
+            **SUPPORT_WORKFLOW,
+            "id": "spoofed-chain",
+            "steps": [
+                {"id": "draft", "prompt": "Draft: {{steps.polish}}", "vars": []},
+                {"id": "polish", "prompt": "Polish: {{ticket}}", "vars": ["ticket"]},
+            ],
+        }
+    )
+    provider = CountingProvider()
+
+    with pytest.raises(VariableError, match="steps.polish"):
+        execute(
+            org,
+            workflow,
+            {"ticket": "hello", "steps.polish": "spoofed"},
+            "ana",
+            store,
+            ledger,
+            provider=provider,
+            now=NOW,
+        )
+
+    assert provider.calls == 0
+    assert store.runs() == []
+    assert ledger.entries() == []
+
+
+def test_invalid_template_fails_before_provider_resolution(org, store, ledger, monkeypatch):
+    workflow = org.workflows["support-reply"].model_copy(deep=True)
+    workflow.steps[0].prompt = "Draft: {{steps.missing}}"
+
+    def unexpected_provider_resolution(name):
+        raise AssertionError(f"resolved provider {name}")
+
+    monkeypatch.setattr("flightdeck.runner.get_provider", unexpected_provider_resolution)
+
+    with pytest.raises(VariableError, match="steps.missing"):
+        execute(org, workflow, {"ticket": "hello"}, "ana", store, ledger, now=NOW)
+
+    assert store.runs() == []
+    assert ledger.entries() == []
 
 
 def test_missing_variable_is_a_user_error(org, store, ledger):

@@ -61,6 +61,18 @@ def required_vars(workflow: Workflow) -> list[str]:
     return names
 
 
+def _preflight_templates(workflow: Workflow, variables: dict[str, str]) -> None:
+    """Validate every prompt dependency before the first provider call."""
+    reserved = sorted(name for name in variables if name.startswith("steps."))
+    if reserved:
+        names = ", ".join(reserved)
+        raise VariableError(f"reserved variable name(s): {names} ('steps.' is reserved for step outputs)")
+    context = dict.fromkeys(variables, "")
+    for step in workflow.steps:
+        render(step.prompt, context)
+        context[f"steps.{step.id}"] = ""
+
+
 def _sha256(text: str) -> str:
     import hashlib
 
@@ -132,6 +144,7 @@ def execute(
     except NoRouteError as exc:
         return _terminal("blocked", str(exc))
     spec = route.spec
+    _preflight_templates(workflow, variables)
 
     redactions = 0
     context = dict(variables)
