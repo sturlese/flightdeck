@@ -132,6 +132,52 @@ def test_missing_or_null_use_case_collection_loads_empty(tmp_path, collection):
     assert load_org(root).usecases == {}
 
 
+@pytest.mark.parametrize(
+    ("filename", "key"),
+    [("models.yaml", "models"), ("usecases.yaml", "usecases")],
+)
+def test_scalar_config_collections_fail_as_config_errors(tmp_path, filename, key):
+    root = write_org(tmp_path / "org", workflows=[])
+    path = root / filename
+    path.write_text(yaml.safe_dump({key: 7}), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    assert str(path) in str(excinfo.value)
+    assert f"{key!r} must be a list, got int" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("filename", "key", "items"),
+    [
+        ("models.yaml", "models", [MODELS[0]]),
+        ("usecases.yaml", "usecases", []),
+    ],
+)
+def test_unknown_config_collection_keys_fail_loudly(tmp_path, filename, key, items):
+    root = write_org(tmp_path / "org", workflows=[])
+    path = root / filename
+    typo = f"{key}_typo"
+    path.write_text(yaml.safe_dump({key: items, typo: []}), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_org(root)
+
+    message = str(excinfo.value)
+    assert repr(typo) in message
+    assert f"expected only {key!r}" in message
+
+
+def test_non_string_config_collection_key_is_a_config_error(tmp_path):
+    root = write_org(tmp_path / "org", workflows=[])
+    path = root / "models.yaml"
+    path.write_text(yaml.safe_dump({"models": [MODELS[0]], 7: []}), encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=r"models\.yaml.*7"):
+        load_org(root)
+
+
 def test_absent_workflow_directory_loads_empty(tmp_path):
     root = write_org(tmp_path / "org", workflows=[])
 

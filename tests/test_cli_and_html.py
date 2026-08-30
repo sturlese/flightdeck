@@ -38,6 +38,23 @@ def test_init_scaffolds_a_loadable_org(tmp_path):
     assert "mock-fast" in org.models
 
 
+def test_config_error_survives_rich_markup_in_unknown_wrapper_key(tmp_path):
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    path = root / "models.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["[/]"] = []
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    result = invoke("report", "--dir", str(root))
+
+    assert not isinstance(result.exception, MarkupError)
+    assert result.exit_code == 2
+    assert "unknown top-level key" in result.output
+    assert "[/]" in result.output
+
+
 def test_init_refuses_to_overwrite(tmp_path):
     root = _init(tmp_path)
     result = invoke("init", "--dir", str(root))

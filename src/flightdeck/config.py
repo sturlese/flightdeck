@@ -96,6 +96,20 @@ def _read_yaml(path: Path) -> dict:
     return raw
 
 
+def _read_collection(path: Path, key: str) -> list[object]:
+    """Load a strict single-key document whose value is a list or null."""
+    raw = _read_yaml(path)
+    if unknown := sorted(repr(name) for name in raw if name != key):
+        names = ", ".join(unknown)
+        raise ConfigError(f"{path}: unknown top-level key(s): {names}; expected only {key!r}")
+    items = raw.get(key)
+    if items is None:
+        return []
+    if not isinstance(items, list):
+        raise ConfigError(f"{path}: {key!r} must be a list, got {type(items).__name__}")
+    return items
+
+
 def _validation_error(path: Path, exc: ValidationError) -> ConfigError:
     lines = []
     for err in exc.errors():
@@ -152,7 +166,7 @@ def load_org(root: Path | str) -> Org:
 
     models_path = root / MODELS_FILE
     models = _load_indexed_items(
-        _read_yaml(models_path).get("models") or [],
+        _read_collection(models_path, "models"),
         path=models_path,
         item_type=ModelSpec,
         kind="model",
@@ -164,7 +178,7 @@ def load_org(root: Path | str) -> Org:
     usecases_path = root / USECASES_FILE
     if usecases_path.exists():
         usecases = _load_indexed_items(
-            _read_yaml(usecases_path).get("usecases") or [],
+            _read_collection(usecases_path, "usecases"),
             path=usecases_path,
             item_type=UseCase,
             kind="use case",
