@@ -70,7 +70,7 @@ def _org(root: Path) -> Org:
     try:
         return load_org(root)
     except ConfigError as exc:
-        err.print(f"[red]config error:[/red] {exc}")
+        err.print(f"[red]config error:[/red] {escape(str(exc))}")
         raise typer.Exit(2) from None
 
 
