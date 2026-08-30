@@ -205,44 +205,43 @@ def _health(workflow: Workflow, report: WorkflowReport) -> Health:
 # -------------------------------------------------------------------- report
 
 
-def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: datetime | None = None) -> OrgReport:
-    """KPIs over the last ``days`` (the decision window) plus full-history weekly
-    trends (the context). One pass over the evidence, pure computation."""
-    until = now or datetime.now(UTC)
-    since = until - timedelta(days=days)
-    default_review = org.config.default_review_minutes
+@dataclass
+class _WindowWorkflowKpis:
+    """Window-scoped workflow outputs plus the governance facts they establish."""
 
-    all_runs = store.runs()
-    feedback = store.feedback_map()
-    earned = earned_minutes(org, all_runs, feedback, default_review)
-    verify = ledger.verify()
+    workflows: list[WorkflowReport]
+    active_users: set[str]
+    blocked_budget: int
+    blocked_policy: int
+    failed: int
+    region_mix: dict[str, int]
 
-    report = OrgReport(
-        org_name=org.config.name,
-        currency=org.config.currency,
-        window_days=days,
-        since=since,
-        until=until,
-    )
-    report.governance.ledger_entries = verify.entries
-    report.governance.ledger_ok = verify.ok
 
-    # Full-history weekly trend (org level).
+def _accumulate_full_history(
+    org: Org, runs: list[Run], earned: dict[str, float]
+) -> tuple[list[WeeklyPoint], dict[tuple[str, str], set[str]], int, int]:
+    """Build full-history trends and the per-workflow adoption inputs.
+
+    Weekly organization activity includes completed runs for workflows no longer
+    declared in the org. Per-workflow adoption only includes currently declared
+    workflows, because only those have an adoption denominator.
+    """
     weekly: dict[str, WeeklyPoint] = {}
     weekly_users: dict[str, set[str]] = defaultdict(set)
-    # Per-workflow weekly actives, for the adoption average inside the window.
     workflow_week_users: dict[tuple[str, str], set[str]] = defaultdict(set)
+    blocked_budget_all = 0
+    blocked_policy_all = 0
 
-    for run in all_runs:
+    for run in runs:
         workflow = org.workflows.get(run.workflow_id)
         week_label, week_start = _iso_week(run.started_at)
         point = weekly.setdefault(week_label, WeeklyPoint(week=week_label, start=week_start))
         point.cost += run.cost
         if run.status == "blocked":
             if is_budget_block(run.reason):
-                report.governance.blocked_budget_all += 1
+                blocked_budget_all += 1
             else:
-                report.governance.blocked_policy_all += 1
+                blocked_policy_all += 1
         if run.status == "completed":
             point.runs += 1
             weekly_users[week_label].add(run.user)
@@ -252,11 +251,29 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
 
     for label, users in weekly_users.items():
         weekly[label].active_users = len(users)
-    report.weekly = sorted(weekly.values(), key=lambda point: point.start)
+    return (
+        sorted(weekly.values(), key=lambda point: point.start),
+        workflow_week_users,
+        blocked_budget_all,
+        blocked_policy_all,
+    )
 
-    # Window KPIs per workflow.
-    window_runs = [run for run in all_runs if run.started_at >= since]
+
+def _assemble_window_workflow_kpis(
+    org: Org,
+    runs: list[Run],
+    feedback: dict[str, Feedback],
+    earned: dict[str, float],
+    workflow_week_users: dict[tuple[str, str], set[str]],
+    until: datetime,
+) -> _WindowWorkflowKpis:
+    """Assemble decision-window KPI rows for currently declared workflows."""
+    workflows: list[WorkflowReport] = []
     window_users: set[str] = set()
+    blocked_budget = 0
+    blocked_policy = 0
+    failed = 0
+    region_mix: dict[str, int] = {}
 
     for workflow_id, workflow in org.workflows.items():
         entry = WorkflowReport(
@@ -271,7 +288,7 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
         users: set[str] = set()
         minutes = 0.0
 
-        for run in window_runs:
+        for run in runs:
             if run.workflow_id != workflow_id:
                 continue
             entry.ai_cost += run.cost
@@ -279,13 +296,13 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
             if run.status == "blocked":
                 entry.runs_blocked += 1
                 if is_budget_block(run.reason):
-                    report.governance.blocked_budget += 1
+                    blocked_budget += 1
                 else:
-                    report.governance.blocked_policy += 1
+                    blocked_policy += 1
                 continue
             if run.status == "failed":
                 entry.runs_failed += 1
-                report.governance.failed += 1
+                failed += 1
                 continue
             entry.runs_completed += 1
             users.add(run.user)
@@ -302,7 +319,7 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
             minutes += earned.get(run.id, 0.0)
             spec = org.models.get(run.model_id)
             if spec is not None:
-                report.governance.region_mix[spec.region] = report.governance.region_mix.get(spec.region, 0) + 1
+                region_mix[spec.region] = region_mix.get(spec.region, 0) + 1
 
         entry.active_users = len(users)
         if entry.reviewed:
@@ -327,7 +344,38 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
         entry.value = entry.hours_saved * hourly
         entry.net_value = entry.value - entry.ai_cost
         entry.health = _health(workflow, entry)
-        report.workflows.append(entry)
+        workflows.append(entry)
+
+    return _WindowWorkflowKpis(
+        workflows=workflows,
+        active_users=window_users,
+        blocked_budget=blocked_budget,
+        blocked_policy=blocked_policy,
+        failed=failed,
+        region_mix=region_mix,
+    )
+
+
+def _complete_governance(
+    org: Org,
+    window_runs: list[Run],
+    workflow_kpis: _WindowWorkflowKpis,
+    blocked_budget_all: int,
+    blocked_policy_all: int,
+    ledger_entries: int,
+    ledger_ok: bool,
+) -> GovernanceReport:
+    """Complete governance with orphan incidents and organization-wide run facts."""
+    governance = GovernanceReport(
+        blocked_budget=workflow_kpis.blocked_budget,
+        blocked_policy=workflow_kpis.blocked_policy,
+        blocked_budget_all=blocked_budget_all,
+        blocked_policy_all=blocked_policy_all,
+        failed=workflow_kpis.failed,
+        region_mix=workflow_kpis.region_mix,
+        ledger_entries=ledger_entries,
+        ledger_ok=ledger_ok,
+    )
 
     # Governance incidents for a workflow since deleted from config still belong in
     # the window rollup: the all-time counters already include them, so the window
@@ -339,19 +387,28 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
             continue
         if run.status == "blocked":
             if is_budget_block(run.reason):
-                report.governance.blocked_budget += 1
+                governance.blocked_budget += 1
             else:
-                report.governance.blocked_policy += 1
+                governance.blocked_policy += 1
         elif run.status == "failed":
-            report.governance.failed += 1
+            governance.failed += 1
 
     completed = [run for run in window_runs if run.status == "completed"]
     if completed:
         no_training = sum(
             1 for run in completed if (spec := org.models.get(run.model_id)) and not spec.trains_on_data
         )
-        report.governance.no_training_share = no_training / len(completed)
-    report.governance.redactions = sum(entry.redactions for entry in report.workflows)
+        governance.no_training_share = no_training / len(completed)
+    governance.redactions = sum(entry.redactions for entry in workflow_kpis.workflows)
+    return governance
+
+
+def _finalize_report(
+    report: OrgReport, workflow_kpis: _WindowWorkflowKpis, governance: GovernanceReport
+) -> OrgReport:
+    """Apply stable presentation order and report totals after all phases complete."""
+    report.workflows = workflow_kpis.workflows
+    report.governance = governance
 
     report.workflows.sort(key=lambda entry: entry.net_value, reverse=True)
     report.total_hours_saved = sum(entry.hours_saved for entry in report.workflows)
@@ -359,8 +416,46 @@ def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: da
     report.total_ai_cost = sum(entry.ai_cost for entry in report.workflows)
     report.total_net_value = sum(entry.net_value for entry in report.workflows)
     report.total_runs_completed = sum(entry.runs_completed for entry in report.workflows)
-    report.active_users = len(window_users)
+    report.active_users = len(workflow_kpis.active_users)
     return report
+
+
+def build_report(org: Org, store: Store, ledger: Ledger, days: int = 30, now: datetime | None = None) -> OrgReport:
+    """Orchestrate the decision-window KPI and full-history reporting phases."""
+    until = now or datetime.now(UTC)
+    since = until - timedelta(days=days)
+    all_runs = store.runs()
+    feedback = store.feedback_map()
+    earned = earned_minutes(org, all_runs, feedback, org.config.default_review_minutes)
+    verify = ledger.verify()
+
+    report = OrgReport(
+        org_name=org.config.name,
+        currency=org.config.currency,
+        window_days=days,
+        since=since,
+        until=until,
+    )
+    (
+        report.weekly,
+        workflow_week_users,
+        blocked_budget_all,
+        blocked_policy_all,
+    ) = _accumulate_full_history(org, all_runs, earned)
+    window_runs = [run for run in all_runs if run.started_at >= since]
+    workflow_kpis = _assemble_window_workflow_kpis(
+        org, window_runs, feedback, earned, workflow_week_users, until
+    )
+    governance = _complete_governance(
+        org,
+        window_runs,
+        workflow_kpis,
+        blocked_budget_all,
+        blocked_policy_all,
+        verify.entries,
+        verify.ok,
+    )
+    return _finalize_report(report, workflow_kpis, governance)
 
 
 def _week_key(label: str) -> tuple[int, int]:

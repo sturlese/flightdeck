@@ -177,6 +177,80 @@ class TestBuildReport:
         assert entry.runs_completed == 0
         assert len(report.weekly) == 1  # …but the trend still sees full history
 
+    def test_window_is_since_inclusive_and_currently_includes_future_runs(self, org, store, ledger):
+        since = NOW - timedelta(days=30)
+        store.add_run(_run("before", since - timedelta(microseconds=1), user="before"))
+        store.add_run(_run("at-since", since, user="boundary"))
+        store.add_run(_run("future", NOW + timedelta(days=1), user="future"))
+
+        report = build_report(org, store, ledger, days=30, now=NOW)
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+
+        assert entry.runs_completed == report.total_runs_completed == 2
+        assert (entry.active_users, report.active_users) == (2, 2)
+
+    def test_adoption_uses_all_history_last_four_complete_weeks(self, org, store, ledger):
+        until = datetime(2026, 7, 20, 12, tzinfo=UTC)
+        complete_weeks = (
+            (datetime(2026, 6, 1, 12, tzinfo=UTC), 8),
+            (datetime(2026, 6, 8, 12, tzinfo=UTC), 7),
+            (datetime(2026, 6, 22, 12, tzinfo=UTC), 1),
+            (datetime(2026, 6, 29, 12, tzinfo=UTC), 2),
+            (datetime(2026, 7, 6, 12, tzinfo=UTC), 3),
+            (datetime(2026, 7, 13, 12, tzinfo=UTC), 4),
+        )
+        for week_start, users in complete_weeks:
+            for index in range(users):
+                store.add_run(_run(f"{week_start:%m%d}-{index}", week_start, user=f"user-{index}"))
+        for index in range(9):  # Current incomplete week: excluded from adoption.
+            store.add_run(_run(f"incomplete-{index}", until - timedelta(hours=1), user=f"incomplete-{index}"))
+
+        report = build_report(org, store, ledger, days=7, now=until)
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+
+        assert entry.weekly_active_avg == pytest.approx((1 + 2 + 3 + 4) / 4)
+        assert entry.adoption == pytest.approx(2.5 / 12)
+
+    def test_orphan_completed_run_affects_weekly_and_training_but_not_kpis(self, org, store, ledger):
+        when = NOW - timedelta(days=1)
+        store.add_run(_run("known", when, user="known"))
+        store.add_run(_run(
+            "orphan", when, workflow_id="deleted-wf", user="orphan", model_id="mock-trainer-us",
+            cost=0.03, redactions=7,
+        ))
+
+        report = build_report(org, store, ledger, days=30, now=NOW)
+        entry = next(e for e in report.workflows if e.workflow_id == "support-reply")
+        point = next(point for point in report.weekly if point.start == when.date() - timedelta(days=when.weekday()))
+
+        assert (entry.runs_completed, report.total_runs_completed, report.active_users) == (1, 1, 1)
+        assert (report.governance.redactions, report.governance.region_mix) == (1, {"eu": 1})
+        assert report.governance.no_training_share == pytest.approx(0.5)
+        assert (point.runs, point.active_users, point.cost) == (2, 2, pytest.approx(0.05))
+
+    def test_weekly_status_costs_are_chronological_and_equal_net_order_is_stable(self, org, store, ledger):
+        early = datetime(2026, 6, 23, 12, tzinfo=UTC)
+        late = NOW - timedelta(days=1)
+        store.add_run(_run("early-complete", early, cost=0.25))
+        store.add_run(_run(
+            "early-blocked", early, status="blocked", reason="monthly budget exhausted",
+            model_id="", provider="", cost=0.25,
+        ))
+        store.add_run(_run("late-failed", late, status="failed", reason="provider: timeout", cost=0.25))
+        store.add_run(_run("board", late, workflow_id="board-brief", user="bea", cost=0.75))
+
+        report = build_report(org, store, ledger, days=30, now=NOW)
+
+        assert [
+            (point.week, point.runs, point.active_users, point.hours_saved, point.cost)
+            for point in report.weekly
+        ] == [
+            ("2026-W26", 1, 1, 0.0, 0.5),
+            ("2026-W28", 1, 1, 0.0, 1.0),
+        ]
+        assert [entry.workflow_id for entry in report.workflows] == ["board-brief", "support-reply"]
+        assert [entry.net_value for entry in report.workflows] == [-0.75, -0.75]
+
     def test_zero_acceptance_target_is_met_not_a_crash(self, org, store, ledger):
         # acceptance_target: 0 is schema-legal (ge=0). A reviewed run must not crash
         # build_report with a ZeroDivisionError — a 0 bar is cleared by any rate.
