@@ -24,7 +24,8 @@ def test_demo_seeds_a_full_believable_program(tmp_path):
 
     assert report.total_hours_saved > 40
     assert report.total_net_value > 0
-    assert report.governance.blocked_policy >= 1 or report.governance.blocked_budget >= 1
+    assert report.governance.blocked_policy_all >= 1
+    assert report.governance.blocked_budget_all >= 1
     assert report.governance.no_training_share == 1.0  # policy kept trainer models out
     health = {entry.workflow_id: entry.health for entry in report.workflows}
     assert health["localization-qa"] == "underperforming"  # the honest failure survives reporting
