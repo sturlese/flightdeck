@@ -50,7 +50,12 @@ def is_due(cadence: Cadence, last_started_at: datetime | None, now: datetime) ->
     due only when ``now`` falls in a later calendar period than the last run."""
     if last_started_at is None:
         return True
-    return _period_key(cadence, last_started_at) != _period_key(cadence, now)
+    # Strictly later, not merely different. A run stamped in a FUTURE period --
+    # clock skew, an imported store, a backfill -- is still the newest row, so
+    # inequality would report the workflow due on every tick from now until that
+    # period arrives: exactly the storm this module says it makes impossible. The
+    # keys are ordered tuples, so ">" is well defined for all three cadences.
+    return _period_key(cadence, now) > _period_key(cadence, last_started_at)
 
 
 def last_run_started_at(store: Store, workflow_id: str) -> datetime | None:

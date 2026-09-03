@@ -118,6 +118,27 @@ def test_blocked_run_in_period_counts_as_already_ticked(store):
     assert is_due("daily", last_run_started_at(store, "daily-digest"), NOW) is False
 
 
+def test_a_future_dated_run_does_not_make_the_period_due_forever():
+    # A run stamped ahead of now -- clock skew, an imported store, a backfill --
+    # is in a period that is not `now`'s, but it is not an EARLIER one either. The
+    # module's contract is "due only when now falls in a LATER calendar period".
+    assert is_due("daily", NOW + timedelta(days=1), NOW) is False
+    assert is_due("weekly", NOW + timedelta(weeks=1), NOW) is False
+    assert is_due("monthly", datetime(2026, 8, 1, tzinfo=UTC), NOW) is False
+
+
+def test_future_dated_run_stays_the_newest_row_so_the_storm_would_be_unbounded(store):
+    # Why the above matters: last_run_started_at returns the newest row by
+    # started_at, so a future-stamped run remains "the last run" no matter how many
+    # runs tick adds after it. Under inequality every subsequent tick would see a
+    # different period and fire again -- forever, not once.
+    store.add_run(_blocked_run("daily-digest", NOW + timedelta(days=1)))
+    store.add_run(_blocked_run("daily-digest", NOW))
+
+    assert last_run_started_at(store, "daily-digest") == NOW + timedelta(days=1)
+    assert is_due("daily", last_run_started_at(store, "daily-digest"), NOW) is False
+
+
 def test_last_run_started_at_is_none_when_no_runs(store):
     assert last_run_started_at(store, "daily-digest") is None
 
@@ -246,3 +267,22 @@ def test_tick_skips_workflow_already_run_this_period(tmp_path, monkeypatch):
     assert "skipped (not due this daily)" in result.output
     with Store(org.db_path) as store:
         assert len(store.runs(workflow_id="daily-digest")) == 1  # no new run added
+
+
+def test_tick_does_not_storm_on_a_future_dated_run(tmp_path, monkeypatch):
+    # The end-to-end damage: with a run stamped tomorrow already in the store, the
+    # scheduler's own promise -- "a scheduler that calls tick 300 times in an hour
+    # runs a daily digest exactly once that day" -- must still hold.
+    _freeze(monkeypatch)
+    root = write_org(tmp_path / "org", workflows=[DIGEST_WORKFLOW])
+    org = load_org(root)
+    with Store(org.db_path) as store:
+        store.add_run(_blocked_run("daily-digest", NOW + timedelta(days=1)))
+
+    for _ in range(3):
+        result = invoke("tick", "--dir", str(root))
+        assert result.exit_code == 0, result.output
+        assert "skipped (not due this daily)" in result.output
+
+    with Store(org.db_path) as store:
+        assert len(store.runs(workflow_id="daily-digest")) == 1  # the seeded row, nothing added
