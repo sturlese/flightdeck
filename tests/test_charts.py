@@ -122,5 +122,9 @@ def test_line_chart_draws_no_hairline_under_the_zero_axis():
     # 1px strokes and cost the chart one of its three promised hairlines.
     svg = line_chart("hours", ["W27", "W28"], [-5.0, -10.0], " h", "hours saved")
 
-    axis_y = re.search(r'class="fd-axis" x1="44" y1="([\d.]+)"', svg).group(1)
-    assert axis_y not in re.findall(r'class="fd-grid" x1="44" y1="([\d.]+)"', svg)
+    # Compare numbers, not strings: the axis goes through _coord ("18") while
+    # gridlines use ":.1f" ("18.0"), so a string test silently passes at exactly
+    # the two integral positions where a regression would land.
+    axis_y = float(re.search(r'class="fd-axis" x1="44" y1="([\d.]+)"', svg).group(1))
+    grid_ys = [float(y) for y in re.findall(r'class="fd-grid" x1="44" y1="([\d.]+)"', svg)]
+    assert axis_y not in grid_ys, (axis_y, grid_ys)

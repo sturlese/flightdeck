@@ -94,13 +94,16 @@ def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0, st
 
     A domain floored at zero keeps the established framing -- three hairlines at
     thirds of ``top``, the axis ruling the plot floor where zero is self-evident
-    and needs no tick -- so those charts, column_chart included, render
-    byte-for-byte as before.
+    and needs no tick. Those charts, column_chart included, render byte-for-byte
+    as before, with one deliberate exception: a label that rounds to zero loses
+    its minus sign (see _fmt).
 
-    A two-sided domain instead walks multiples of ``step``. Zero then always
-    lands on a gridline and carries a label, and so does the domain minimum:
-    without them the axis is just a heavier rule at an arbitrary height, and a
-    reader can see the dip but not read how deep it goes."""
+    A two-sided domain instead walks multiples of ``step``. Zero always lands on
+    a labeled position and so does the domain minimum: without them the axis is
+    just a heavier rule at an arbitrary height, and a reader can see the dip but
+    not read how deep it goes. The hairline count is whatever the step yields
+    (2-4 in practice) rather than a fixed three, because on a two-sided scale the
+    tick values have to be readable numbers before they are a tidy count."""
     if bottom == 0.0:
         parts = [
             _tick(_PAD_T + plot_h * (1 - index / 3), top * index / 3, unit)
