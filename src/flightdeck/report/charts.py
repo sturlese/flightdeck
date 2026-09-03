@@ -49,17 +49,21 @@ def _money(value: float, unit: str) -> str:
     return f"{'−' if negative else ''}{unit}{_fmt(abs(value))}"
 
 
-def _grid_and_axis(top: float, unit: str, plot_h: float) -> str:
+def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0) -> str:
+    """Gridlines across the domain [bottom, top]; the axis sits on the zero line.
+    With the default bottom=0 the zero line IS the plot floor, so a non-negative
+    chart renders byte-for-byte as before."""
+    span = (top - bottom) or 1.0
     parts = []
     for index in range(1, 4):  # 3 hairlines + baseline
         y = _PAD_T + plot_h * (1 - index / 3)
-        tick = top * index / 3
+        tick = bottom + span * index / 3
         parts.append(f'<line class="fd-grid" x1="{_PAD_L}" y1="{y:.1f}" x2="{_W - _PAD_R}" y2="{y:.1f}"/>')
         parts.append(
             f'<text class="fd-tick" x="{_PAD_L - 6}" y="{y + 3.5:.1f}" text-anchor="end">{_fmt(tick)}{unit}</text>'
         )
-    baseline_y = _PAD_T + plot_h
-    parts.append(f'<line class="fd-axis" x1="{_PAD_L}" y1="{baseline_y}" x2="{_W - _PAD_R}" y2="{baseline_y}"/>')
+    zero_y = _PAD_T + plot_h * (1 - (0.0 - bottom) / span)
+    parts.append(f'<line class="fd-axis" x1="{_PAD_L}" y1="{zero_y:.1f}" x2="{_W - _PAD_R}" y2="{zero_y:.1f}"/>')
     return "".join(parts)
 
 
@@ -79,14 +83,24 @@ def line_chart(chart_id: str, labels: list[str], values: list[float], unit: str,
         return '<p class="fd-empty">no data yet</p>'
     plot_h = _H - _PAD_T - _PAD_B
     plot_w = _W - _PAD_L - _PAD_R
-    top = _nice_top(max(values))
+    # The domain must contain zero AND every value: hours_saved goes negative in a
+    # rejection-heavy week (docs/metrics.md — a rejected run earns −m minutes), and
+    # a domain floored at zero maps that week far below the viewBox, where the
+    # browser clips it and the card silently hides the bad news. Non-negative data
+    # keeps bottom=0, i.e. exactly the previous framing.
+    top = _nice_top(max(values)) if max(values) > 0 else 0.0
+    bottom = -_nice_top(-min(values)) if min(values) < 0 else 0.0
+    span = (top - bottom) or 1.0
     n = len(values)
     xs = [_PAD_L + plot_w * (i + 0.5) / n for i in range(n)]
-    ys = [_PAD_T + plot_h * (1 - v / top) for v in values]
+    ys = [_PAD_T + plot_h * (1 - (v - bottom) / span) for v in values]
     baseline_y = _PAD_T + plot_h
+    zero_y = _PAD_T + plot_h * (1 - (0.0 - bottom) / span)
 
     line_path = "M" + " L".join(f"{x:.1f} {y:.1f}" for x, y in zip(xs, ys, strict=True))
-    area_path = f"{line_path} L{xs[-1]:.1f} {baseline_y} L{xs[0]:.1f} {baseline_y} Z"
+    # The area washes back to zero, not to the frame floor, so a negative week
+    # reads as a dip below the axis instead of a full-height fill.
+    area_path = f"{line_path} L{xs[-1]:.1f} {zero_y:.1f} L{xs[0]:.1f} {zero_y:.1f} Z"
 
     hover = []
     slot = plot_w / n
@@ -100,7 +114,7 @@ def line_chart(chart_id: str, labels: list[str], values: list[float], unit: str,
     end_label = f"{_fmt(values[-1], 1)}{unit}"
     end_x = min(xs[-1] + 8, _W - _PAD_R - 4)
     return f"""<svg class="fd-chart" viewBox="0 0 {_W} {_H}" role="img" aria-label="{escape(series_name)} by week">
-{_grid_and_axis(top, unit, plot_h)}
+{_grid_and_axis(top, unit, plot_h, bottom)}
 <path class="fd-area" d="{area_path}"/>
 <path class="fd-line" d="{line_path}"/>
 <line id="cross-{chart_id}" class="fd-cross" x1="0" y1="{_PAD_T}" x2="0" y2="{baseline_y}" opacity="0"/>

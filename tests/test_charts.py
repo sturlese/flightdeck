@@ -1,7 +1,24 @@
-"""Chart rendering edge cases — cross-surface consistency of money labels."""
+"""Chart rendering edge cases — cross-surface consistency of money labels, and
+the weekly line chart's numeric domain.
+
+hours_saved per week can be negative (docs/metrics.md: a rejected run earns −m
+minutes), and that series feeds line_chart on the dashboard, so its y-domain
+must reach below zero — the terminal sparkline already does (test_terminal.py).
+"""
+
+import re
 
 from flightdeck.format import money
-from flightdeck.report.charts import hbar_chart
+from flightdeck.report.charts import _H, _PAD_B, _PAD_T, hbar_chart, line_chart
+
+# The band a point may legally occupy: outside it the browser clips against the
+# viewBox and the value disappears from the page.
+_BAND = (_PAD_T, _H - _PAD_B)
+
+
+def _line_ys(svg: str) -> list[float]:
+    path = re.search(r'class="fd-line" d="([^"]+)"', svg).group(1)
+    return [float(y) for y in re.findall(r"[ML]-?[\d.]+ (-?[\d.]+)", path)]
 
 
 def test_hbar_negative_matches_the_shared_money_minus_glyph():
@@ -20,3 +37,31 @@ def test_hbar_negative_matches_the_shared_money_minus_glyph():
 def test_hbar_positive_and_empty_render():
     assert money(3000.0, "EUR") in hbar_chart([("Up", 3000)], "€")  # "€3,000"
     assert "no data yet" in hbar_chart([], "€")
+
+
+def test_line_chart_keeps_a_negative_week_inside_the_viewbox():
+    # A rejection-heavy week is exactly the week an executive must see. Before the
+    # fix the domain was floored at zero, so -20 mapped to y=582 in a 236-tall
+    # viewBox: clipped away, and the dashboard quietly hid the bad news.
+    ys = _line_ys(line_chart("hours", ["W27", "W28", "W29"], [10.0, -20.0, 5.0], " h", "hours saved"))
+
+    assert len(ys) == 3
+    assert all(_BAND[0] <= y <= _BAND[1] for y in ys), ys
+    assert ys[1] > ys[0] and ys[1] > ys[2]  # the negative week sits lowest (SVG y grows downward)
+
+
+def test_line_chart_all_negative_stays_in_band_and_hangs_below_the_axis():
+    svg = line_chart("hours", ["W27", "W28"], [-5.0, -10.0], " h", "hours saved")
+    ys = _line_ys(svg)
+
+    assert all(_BAND[0] <= y <= _BAND[1] for y in ys), ys
+    # Every point is below the zero axis, which is now drawn at the top of the band.
+    zero_y = float(re.search(r'class="fd-axis"[^/]*y1="([\d.]+)"', svg).group(1))
+    assert all(y > zero_y for y in ys)
+
+
+def test_line_chart_non_negative_framing_is_unchanged():
+    # Regression guard: the fix must not move a single coordinate on the normal
+    # path — the demo dashboard is CI's end-to-end golden.
+    assert _line_ys(line_chart("hours", ["a", "b", "c"], [1.0, 2.0, 3.0], " h", "s")) == [168.4, 130.8, 93.2]
+    assert _line_ys(line_chart("hours", ["a", "b"], [0.0, 0.0], " h", "s")) == [206.0, 206.0]
