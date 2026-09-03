@@ -40,6 +40,14 @@ def _fmt(value: float, decimals: int | None = None) -> str:
     return f"{value:,.{decimals}f}"
 
 
+def _coord(value: float) -> str:
+    """A coordinate rendered at its natural precision: whole numbers keep their
+    integer form. The zero line lands exactly on the plot floor whenever the
+    domain floors at zero, and this keeps that emission identical to the
+    fixed-baseline output it replaced."""
+    return str(int(value)) if float(value).is_integer() else f"{value:.1f}"
+
+
 def _money(value: float, unit: str) -> str:
     """A currency label that matches format.money's cross-surface contract: the
     U+2212 minus sits BEFORE the symbol (not an ASCII '€-5,000'), and a value that
@@ -52,7 +60,7 @@ def _money(value: float, unit: str) -> str:
 def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0) -> str:
     """Gridlines across the domain [bottom, top]; the axis sits on the zero line.
     With the default bottom=0 the zero line IS the plot floor, so a non-negative
-    chart renders byte-for-byte as before."""
+    chart -- column_chart included -- renders byte-for-byte as before."""
     span = (top - bottom) or 1.0
     parts = []
     for index in range(1, 4):  # 3 hairlines + baseline
@@ -62,8 +70,8 @@ def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0) ->
         parts.append(
             f'<text class="fd-tick" x="{_PAD_L - 6}" y="{y + 3.5:.1f}" text-anchor="end">{_fmt(tick)}{unit}</text>'
         )
-    zero_y = _PAD_T + plot_h * (1 - (0.0 - bottom) / span)
-    parts.append(f'<line class="fd-axis" x1="{_PAD_L}" y1="{zero_y:.1f}" x2="{_W - _PAD_R}" y2="{zero_y:.1f}"/>')
+    zero = _coord(_PAD_T + plot_h * (1 - (0.0 - bottom) / span))
+    parts.append(f'<line class="fd-axis" x1="{_PAD_L}" y1="{zero}" x2="{_W - _PAD_R}" y2="{zero}"/>')
     return "".join(parts)
 
 
@@ -95,12 +103,12 @@ def line_chart(chart_id: str, labels: list[str], values: list[float], unit: str,
     xs = [_PAD_L + plot_w * (i + 0.5) / n for i in range(n)]
     ys = [_PAD_T + plot_h * (1 - (v - bottom) / span) for v in values]
     baseline_y = _PAD_T + plot_h
-    zero_y = _PAD_T + plot_h * (1 - (0.0 - bottom) / span)
+    zero_y = _coord(_PAD_T + plot_h * (1 - (0.0 - bottom) / span))
 
     line_path = "M" + " L".join(f"{x:.1f} {y:.1f}" for x, y in zip(xs, ys, strict=True))
     # The area washes back to zero, not to the frame floor, so a negative week
     # reads as a dip below the axis instead of a full-height fill.
-    area_path = f"{line_path} L{xs[-1]:.1f} {zero_y:.1f} L{xs[0]:.1f} {zero_y:.1f} Z"
+    area_path = f"{line_path} L{xs[-1]:.1f} {zero_y} L{xs[0]:.1f} {zero_y} Z"
 
     hover = []
     slot = plot_w / n

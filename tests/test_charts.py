@@ -9,7 +9,7 @@ must reach below zero — the terminal sparkline already does (test_terminal.py)
 import re
 
 from flightdeck.format import money
-from flightdeck.report.charts import _H, _PAD_B, _PAD_T, hbar_chart, line_chart
+from flightdeck.report.charts import _H, _PAD_B, _PAD_T, column_chart, hbar_chart, line_chart
 
 # The band a point may legally occupy: outside it the browser clips against the
 # viewBox and the value disappears from the page.
@@ -60,8 +60,28 @@ def test_line_chart_all_negative_stays_in_band_and_hangs_below_the_axis():
     assert all(y > zero_y for y in ys)
 
 
-def test_line_chart_non_negative_framing_is_unchanged():
-    # Regression guard: the fix must not move a single coordinate on the normal
-    # path — the demo dashboard is CI's end-to-end golden.
-    assert _line_ys(line_chart("hours", ["a", "b", "c"], [1.0, 2.0, 3.0], " h", "s")) == [168.4, 130.8, 93.2]
-    assert _line_ys(line_chart("hours", ["a", "b"], [0.0, 0.0], " h", "s")) == [206.0, 206.0]
+def test_line_chart_non_negative_output_is_byte_identical():
+    # Regression guard, pinned against the pre-fix output: widening the domain must
+    # not move — or reformat — anything on the non-negative path. The axis and the
+    # area are the two marks the fix actually rewrote, so assert those verbatim
+    # rather than only the line coordinates.
+    svg = line_chart("hours", ["a", "b", "c"], [1.0, 2.0, 3.0], " h", "s")
+
+    assert _line_ys(svg) == [168.4, 130.8, 93.2]
+    assert '<line class="fd-axis" x1="44" y1="206" x2="544" y2="206"/>' in svg
+    assert '<path class="fd-area" d="M127.3 168.4 L294.0 130.8 L460.7 93.2 L460.7 206 L127.3 206 Z"/>' in svg
+
+    flat = line_chart("hours", ["a", "b"], [0.0, 0.0], " h", "s")
+    assert _line_ys(flat) == [206.0, 206.0]
+    assert '<line class="fd-axis" x1="44" y1="206" x2="544" y2="206"/>' in flat
+
+
+def test_column_chart_is_untouched_by_the_line_chart_domain_fix():
+    # column_chart shares _grid_and_axis with line_chart. It plots AI spend, which
+    # is never negative, so it must come out exactly as it did before the domain
+    # became two-sided — the fix has no business changing the spend card.
+    svg = column_chart(["a", "b", "c"], [10.0, 20.0, 30.0], "€", "AI spend")
+
+    # The zero line keeps its integer form; the bars' own ":.1f" coordinates are
+    # untouched by the fix and stay as they were.
+    assert '<line class="fd-axis" x1="44" y1="206" x2="544" y2="206"/>' in svg
