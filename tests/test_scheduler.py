@@ -15,7 +15,7 @@ from typer.testing import CliRunner
 from flightdeck.cli import app
 from flightdeck.config import ConfigError, load_org
 from flightdeck.ledger import Ledger
-from flightdeck.scheduler import is_due, last_run_started_at
+from flightdeck.scheduler import is_due, runs_started_this_period
 from flightdeck.schemas import Run
 from flightdeck.store import Store
 from tests.conftest import NOW, write_org
@@ -87,66 +87,74 @@ def test_workflow_without_schedule_defaults_to_none(org):
 
 @pytest.mark.parametrize("cadence", ["daily", "weekly", "monthly"])
 def test_never_run_is_always_due(cadence):
-    assert is_due(cadence, None, NOW) is True
+    assert is_due(cadence, [], NOW) is True
 
 
 def test_daily_due_across_day_boundary():
-    assert is_due("daily", NOW - timedelta(days=1), NOW) is True  # yesterday → due
-    assert is_due("daily", NOW - timedelta(hours=6), NOW) is False  # earlier today → not due
+    assert is_due("daily", [NOW - timedelta(days=1)], NOW) is True  # yesterday → due
+    assert is_due("daily", [NOW - timedelta(hours=6)], NOW) is False  # earlier today → not due
 
 
 def test_weekly_due_across_iso_week_boundary():
     # NOW is 2026-07-08 (Wed, ISO week 28). Monday of that week is 2026-07-06.
-    assert is_due("weekly", datetime(2026, 7, 6, tzinfo=UTC), NOW) is False  # same ISO week
-    assert is_due("weekly", datetime(2026, 7, 5, tzinfo=UTC), NOW) is True  # previous ISO week
+    assert is_due("weekly", [datetime(2026, 7, 6, tzinfo=UTC)], NOW) is False  # same ISO week
+    assert is_due("weekly", [datetime(2026, 7, 5, tzinfo=UTC)], NOW) is True  # previous ISO week
 
 
 def test_monthly_due_across_month_boundary():
-    assert is_due("monthly", datetime(2026, 7, 1, tzinfo=UTC), NOW) is False  # same month
-    assert is_due("monthly", datetime(2026, 6, 30, tzinfo=UTC), NOW) is True  # previous month
+    assert is_due("monthly", [datetime(2026, 7, 1, tzinfo=UTC)], NOW) is False  # same month
+    assert is_due("monthly", [datetime(2026, 6, 30, tzinfo=UTC)], NOW) is True  # previous month
 
 
 def test_naive_timestamp_is_treated_as_utc():
-    assert is_due("daily", NOW.replace(tzinfo=None), NOW) is False  # same day, tz-normalized
+    assert is_due("daily", [NOW.replace(tzinfo=None)], NOW) is False  # same day, tz-normalized
 
 
 def test_blocked_run_in_period_counts_as_already_ticked(store):
     # Idempotency: a budget-blocked attempt still spends the period, so a storm
     # that only ever blocks cannot keep retrying.
     store.add_run(_blocked_run("daily-digest", NOW))
-    assert last_run_started_at(store, "daily-digest") == NOW
-    assert is_due("daily", last_run_started_at(store, "daily-digest"), NOW) is False
+    assert runs_started_this_period(store, "daily-digest", "daily", NOW) == [NOW]
+    assert is_due("daily", runs_started_this_period(store, "daily-digest", "daily", NOW), NOW) is False
 
 
-def test_a_future_dated_run_does_not_make_the_period_due_forever():
+def test_a_run_in_another_period_does_not_count_as_this_period(store):
     # A run stamped ahead of now -- clock skew, an imported store, a backfill --
-    # is in a period that is not `now`'s, but it is not an EARLIER one either. The
-    # module's contract is "due only when now falls in a LATER calendar period".
-    assert is_due("daily", NOW + timedelta(days=1), NOW) is False
-    assert is_due("weekly", NOW + timedelta(weeks=1), NOW) is False
-    assert is_due("monthly", datetime(2026, 8, 1, tzinfo=UTC), NOW) is False
+    # is not a run in THIS period, so it must neither spend the period (starving
+    # the workflow until that date arrives) nor keep re-triggering it.
+    ahead_by = (("daily", timedelta(days=1)), ("weekly", timedelta(weeks=1)), ("monthly", timedelta(days=40)))
+    for cadence, ahead in ahead_by:
+        assert is_due(cadence, [NOW + ahead], NOW) is True
+        assert is_due(cadence, [NOW + ahead, NOW], NOW) is False  # ...but today's run still spends it
 
 
-def test_future_dated_run_stays_the_newest_row_so_the_storm_would_be_unbounded(store):
-    # Why the above matters: last_run_started_at returns the newest row by
-    # started_at, so a future-stamped run remains "the last run" no matter how many
-    # runs tick adds after it. Under inequality every subsequent tick would see a
-    # different period and fire again -- forever, not once.
+def test_a_future_dated_run_neither_storms_nor_starves(store):
+    # The trap the newest-row-only reading falls into either way: last row by
+    # started_at is the future one, so comparing periods for inequality fires on
+    # every tick, and comparing them for order fires on none. Asking the run SET
+    # is what makes both answers right.
     store.add_run(_blocked_run("daily-digest", NOW + timedelta(days=1)))
-    store.add_run(_blocked_run("daily-digest", NOW))
 
-    assert last_run_started_at(store, "daily-digest") == NOW + timedelta(days=1)
-    assert is_due("daily", last_run_started_at(store, "daily-digest"), NOW) is False
+    assert runs_started_this_period(store, "daily-digest", "daily", NOW) == []
+    assert is_due("daily", runs_started_this_period(store, "daily-digest", "daily", NOW), NOW) is True
 
-
-def test_last_run_started_at_is_none_when_no_runs(store):
-    assert last_run_started_at(store, "daily-digest") is None
+    store.add_run(_blocked_run("daily-digest", NOW))  # now today's period is spent
+    assert is_due("daily", runs_started_this_period(store, "daily-digest", "daily", NOW), NOW) is False
 
 
-def test_last_run_started_at_returns_newest(store):
+def test_runs_started_this_period_is_empty_when_no_runs(store):
+    assert runs_started_this_period(store, "daily-digest", "daily", NOW) == []
+
+
+def test_runs_started_this_period_excludes_earlier_periods(store):
     store.add_run(_blocked_run("daily-digest", NOW - timedelta(days=2)))
     store.add_run(_blocked_run("daily-digest", NOW - timedelta(days=1)))
-    assert last_run_started_at(store, "daily-digest") == NOW - timedelta(days=1)
+    assert runs_started_this_period(store, "daily-digest", "daily", NOW) == []
+    # ...and the same history one cadence up IS this week's, so the week is spent.
+    assert runs_started_this_period(store, "daily-digest", "weekly", NOW) == [
+        NOW - timedelta(days=2),
+        NOW - timedelta(days=1),
+    ]
 
 
 # ------------------------------------------------------------------- tick command
@@ -270,19 +278,22 @@ def test_tick_skips_workflow_already_run_this_period(tmp_path, monkeypatch):
 
 
 def test_tick_does_not_storm_on_a_future_dated_run(tmp_path, monkeypatch):
-    # The end-to-end damage: with a run stamped tomorrow already in the store, the
-    # scheduler's own promise -- "a scheduler that calls tick 300 times in an hour
-    # runs a daily digest exactly once that day" -- must still hold.
+    # The end-to-end promise, with a run stamped tomorrow already in the store: it
+    # runs EXACTLY ONCE -- not on every tick (the storm), and not never (silent
+    # starvation until tomorrow's stamp comes round).
     _freeze(monkeypatch)
     root = write_org(tmp_path / "org", workflows=[DIGEST_WORKFLOW])
     org = load_org(root)
     with Store(org.db_path) as store:
         store.add_run(_blocked_run("daily-digest", NOW + timedelta(days=1)))
 
+    outputs = []
     for _ in range(3):
         result = invoke("tick", "--dir", str(root))
         assert result.exit_code == 0, result.output
-        assert "skipped (not due this daily)" in result.output
+        outputs.append(result.output)
 
+    assert "daily-digest: ran" in outputs[0]  # not starved by the future stamp
+    assert all("skipped (not due this daily)" in out for out in outputs[1:])  # and not a storm
     with Store(org.db_path) as store:
-        assert len(store.runs(workflow_id="daily-digest")) == 1  # the seeded row, nothing added
+        assert len(store.runs(workflow_id="daily-digest")) == 2  # the seeded row + exactly one run

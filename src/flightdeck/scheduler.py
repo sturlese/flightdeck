@@ -18,7 +18,8 @@ later call sees the period already spent and skips it. The period, not success,
 is what gets consumed — that is what makes the demo's week-9 runaway impossible.
 """
 
-from datetime import UTC, datetime
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 
 from flightdeck.schemas import Cadence
 from flightdeck.store import Store
@@ -44,23 +45,46 @@ def _period_key(cadence: Cadence, moment: datetime) -> tuple[int, ...]:
     return (moment.year, moment.month)  # monthly
 
 
-def is_due(cadence: Cadence, last_started_at: datetime | None, now: datetime) -> bool:
-    """Is a workflow with this cadence due at ``now``, given the start time of its
-    most recent run (or None if it never ran)? Never-run is always due; otherwise
-    due only when ``now`` falls in a later calendar period than the last run."""
-    if last_started_at is None:
-        return True
-    # Strictly later, not merely different. A run stamped in a FUTURE period --
-    # clock skew, an imported store, a backfill -- is still the newest row, so
-    # inequality would report the workflow due on every tick from now until that
-    # period arrives: exactly the storm this module says it makes impossible. The
-    # keys are ordered tuples, so ">" is well defined for all three cadences.
-    return _period_key(cadence, now) > _period_key(cadence, last_started_at)
+def _period_start(cadence: Cadence, moment: datetime) -> datetime:
+    """The first instant of the calendar period ``moment`` falls in — the SQL
+    bound that keeps the due-check proportional to this period's runs rather than
+    to the whole history."""
+    day = _to_utc(moment).replace(hour=0, minute=0, second=0, microsecond=0)
+    if cadence == "daily":
+        return day
+    if cadence == "weekly":
+        return day - timedelta(days=day.isoweekday() - 1)  # back to Monday
+    return day.replace(day=1)  # monthly
 
 
-def last_run_started_at(store: Store, workflow_id: str) -> datetime | None:
-    """The ``started_at`` of the workflow's most recent run, or None. ``runs`` is
-    time-ordered, so the last row is the newest attempt — completed, blocked or
-    failed, all of which count as "already ticked this period"."""
-    runs = store.runs(workflow_id=workflow_id)
-    return runs[-1].started_at if runs else None
+def is_due(cadence: Cadence, started_ats: Iterable[datetime], now: datetime) -> bool:
+    """Is a workflow with this cadence due at ``now``, given the start times of
+    its runs? Due unless SOME run already started in now's calendar period.
+
+    That is the rule docs/governance.md states, and asking it of the run SET
+    rather than of the newest row alone is what makes it hold in both directions.
+    Consulting only the newest row leaves two failures, because a run can carry a
+    timestamp ahead of now — clock skew, an imported store, a backfill: comparing
+    the periods for inequality reports the workflow due on every tick until that
+    period arrives (the storm this module exists to prevent), and comparing them
+    for order reports it due on none of them, starving the workflow silently for
+    as long as the bad stamp is in the future. A run in some other period, past or
+    future, simply is not a run in this one.
+    """
+    key = _period_key(cadence, now)
+    return not any(_period_key(cadence, started_at) == key for started_at in started_ats)
+
+
+def runs_started_this_period(store: Store, workflow_id: str, cadence: Cadence, now: datetime) -> list[datetime]:
+    """The start times ``is_due`` needs: this workflow's runs that started in
+    ``now``'s calendar period — completed, blocked or failed, all of which count
+    as "already ticked this period". The SQL bound trims the history to the
+    period's first instant; the key check then drops anything stamped beyond its
+    last one, which a skewed or imported row can be."""
+    key = _period_key(cadence, now)
+    since = _period_start(cadence, now)
+    return [
+        run.started_at
+        for run in store.runs(since=since, workflow_id=workflow_id)
+        if _period_key(cadence, run.started_at) == key
+    ]

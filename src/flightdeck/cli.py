@@ -39,7 +39,7 @@ from flightdeck.report import csv_export, terminal
 from flightdeck.report import html as html_report
 from flightdeck.router import NoRouteError, pick
 from flightdeck.runner import VariableError, execute, required_vars
-from flightdeck.scheduler import is_due, last_run_started_at
+from flightdeck.scheduler import is_due, runs_started_this_period
 from flightdeck.store import Store
 
 #: Optional: set to a Slack incoming-webhook URL to make `slack post` actually
@@ -351,7 +351,7 @@ def tick(
         for workflow in scheduled:
             schedule = workflow.schedule  # never None here (filtered) and guaranteed review == "none"
             cadence = schedule.cadence
-            if not is_due(cadence, last_run_started_at(store, workflow.id), now):
+            if not is_due(cadence, runs_started_this_period(store, workflow.id, cadence, now), now):
                 console.print(f"[dim]· {workflow.id}: skipped (not due this {cadence})[/dim]")
                 continue
             if dry_run:
