@@ -13,7 +13,7 @@ call the very same code.
 """
 
 import math
-from datetime import datetime
+from datetime import UTC, datetime
 
 from flightdeck.ledger import Ledger
 from flightdeck.schemas import Feedback, Outcome
@@ -73,10 +73,14 @@ def record_feedback(
         "feedback_recorded",
         {"run_id": run_id, "outcome": outcome, "human_minutes": human_minutes, "by": entry.by},
         # The event time, not the write time -- the same contract runner.record
-        # keeps with at=run.finished_at. Without it a backfilled or imported
-        # review is sealed under the wall clock, and the ledger an auditor reads
-        # contradicts the store row it is supposed to be evidence for. Append
-        # order is carried by the entry's seq, so this costs the chain nothing.
-        at=entry.at,
+        # keeps with at=run.finished_at. Without it a backfilled review is sealed
+        # under the wall clock, and the ledger an auditor reads contradicts the
+        # store row it is evidence for. Normalized to UTC because the row's own
+        # default is local-offset while every other ledger writer is UTC, and
+        # `audit tail` prints the stamp without its offset: mixing conventions in
+        # one file would show a review as happening before the run it reviews.
+        # Append order is carried by the entry's seq, so this costs the chain
+        # nothing.
+        at=entry.at.astimezone(UTC),
     )
     return entry

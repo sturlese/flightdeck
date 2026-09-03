@@ -5,7 +5,7 @@ Every entry point (the CLI, the Slack adapter) funnels through
 API and ledger events" is enforced at the source.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -89,5 +89,24 @@ def test_feedback_without_an_explicit_time_still_seals_what_the_row_says(org, st
     entry = record_feedback(store, ledger, run.id, "edited", human_minutes=2, by="ana")
     sealed = [e for e in ledger.entries() if e["event"] == "feedback_recorded"][-1]
 
-    assert sealed["at"] == entry.at.isoformat()
+    # Compare instants, not strings: the row's default carries the local offset,
+    # the ledger is normalized to UTC, and both name the same moment.
+    assert datetime.fromisoformat(sealed["at"]) == entry.at
     assert ledger.verify().ok  # and the chain still walks clean
+
+
+def test_ledger_stays_utc_whatever_offset_the_caller_hands_in(org, store, ledger):
+    # `audit tail` renders entry["at"][:16] -- the offset is sliced off before the
+    # reader sees it. So every entry in the file has to share one convention, or a
+    # review shows up hours before the run it reviews. The runner and the demo
+    # seeder both write UTC; feedback must not be the one exception.
+    run = _seed_run(org, store, ledger)
+    tokyo = timezone(timedelta(hours=9))
+
+    record_feedback(store, ledger, run.id, "accepted", by="ana", at=NOW.astimezone(tokyo))
+    stamps = [e["at"] for e in ledger.entries()]
+
+    assert all(s.endswith("+00:00") for s in stamps), stamps
+    # ...and the feedback still cannot predate the run it attests to.
+    events = {e["event"]: e["at"] for e in ledger.entries()}
+    assert events["feedback_recorded"] >= events["run_completed"]
