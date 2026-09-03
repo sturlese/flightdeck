@@ -34,10 +34,24 @@ def _nice_top(value: float) -> float:
     return raw * 10
 
 
+def _nice_step(span: float) -> float:
+    """Smallest 1/2/2.5/5 x 10^k step that cuts span into roughly three intervals."""
+    raw = span / 3
+    magnitude = 10 ** math.floor(math.log10(raw))
+    for mult in (1, 2, 2.5, 5, 10):
+        if magnitude * mult >= raw:
+            return magnitude * mult
+    return magnitude * 10
+
+
 def _fmt(value: float, decimals: int | None = None) -> str:
     if decimals is None:
         decimals = 0 if abs(value) >= 100 or value == int(value) else 1
-    return f"{value:,.{decimals}f}"
+    text = f"{value:,.{decimals}f}"
+    # Never a signed zero. format.money makes the same promise for currency and
+    # _money for the bar labels; once ticks can go negative, "-0.0 h" would sit on
+    # the same axis as "0 h" and read as two different zeros.
+    return text.lstrip("-") if float(text.replace(",", "")) == 0 else text
 
 
 def _coord(value: float) -> str:
@@ -57,20 +71,53 @@ def _money(value: float, unit: str) -> str:
     return f"{'−' if negative else ''}{unit}{_fmt(abs(value))}"
 
 
-def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0) -> str:
-    """Gridlines across the domain [bottom, top]; the axis sits on the zero line.
-    With the default bottom=0 the zero line IS the plot floor, so a non-negative
-    chart -- column_chart included -- renders byte-for-byte as before."""
-    span = (top - bottom) or 1.0
-    parts = []
-    for index in range(1, 4):  # 3 hairlines + baseline
-        y = _PAD_T + plot_h * (1 - index / 3)
-        tick = bottom + span * index / 3
-        parts.append(f'<line class="fd-grid" x1="{_PAD_L}" y1="{y:.1f}" x2="{_W - _PAD_R}" y2="{y:.1f}"/>')
-        parts.append(
-            f'<text class="fd-tick" x="{_PAD_L - 6}" y="{y + 3.5:.1f}" text-anchor="end">{_fmt(tick)}{unit}</text>'
-        )
-    zero = _coord(_PAD_T + plot_h * (1 - (0.0 - bottom) / span))
+def _tick_decimals(step: float) -> int:
+    """Decimals enough to tell one tick from the next. _fmt picks its precision from
+    the value, which collapses two adjacent small ticks to the same label (-0.05 and
+    -0.10 both render "-0.1"); a tick scale has to be read off the step instead."""
+    decimals = max(0, -math.floor(math.log10(step)))
+    if round(step, decimals) != step:  # a 2.5-style step needs one more
+        decimals += 1
+    return min(decimals, 6)
+
+
+def _tick(y: float, value: float, unit: str, decimals: int | None = None, rule: bool = True) -> str:
+    line = f'<line class="fd-grid" x1="{_PAD_L}" y1="{y:.1f}" x2="{_W - _PAD_R}" y2="{y:.1f}"/>' if rule else ""
+    return (
+        f'{line}<text class="fd-tick" x="{_PAD_L - 6}" y="{y + 3.5:.1f}" '
+        f'text-anchor="end">{_fmt(value, decimals)}{unit}</text>'
+    )
+
+
+def _grid_and_axis(top: float, unit: str, plot_h: float, bottom: float = 0.0, step: float = 0.0) -> str:
+    """Gridlines and the zero axis over the domain [bottom, top].
+
+    A domain floored at zero keeps the established framing -- three hairlines at
+    thirds of ``top``, the axis ruling the plot floor where zero is self-evident
+    and needs no tick -- so those charts, column_chart included, render
+    byte-for-byte as before.
+
+    A two-sided domain instead walks multiples of ``step``. Zero then always
+    lands on a gridline and carries a label, and so does the domain minimum:
+    without them the axis is just a heavier rule at an arbitrary height, and a
+    reader can see the dip but not read how deep it goes."""
+    if bottom == 0.0:
+        parts = [
+            _tick(_PAD_T + plot_h * (1 - index / 3), top * index / 3, unit)
+            for index in range(1, 4)  # 3 hairlines + baseline
+        ]
+        zero = _coord(_PAD_T + plot_h)
+    else:
+        span = top - bottom
+        decimals = _tick_decimals(step)
+        parts = []
+        for k in range(round(bottom / step), round(top / step) + 1):
+            value = k * step
+            y = _PAD_T + plot_h * (1 - (value - bottom) / span)
+            # Zero's rule is the axis itself, drawn below; a hairline there too
+            # would put two opaque 1px strokes on the same pixel.
+            parts.append(_tick(y, value, unit, decimals, rule=bool(k)))
+        zero = _coord(_PAD_T + plot_h * (1 - (0.0 - bottom) / span))
     parts.append(f'<line class="fd-axis" x1="{_PAD_L}" y1="{zero}" x2="{_W - _PAD_R}" y2="{zero}"/>')
     return "".join(parts)
 
@@ -95,9 +142,15 @@ def line_chart(chart_id: str, labels: list[str], values: list[float], unit: str,
     # rejection-heavy week (docs/metrics.md — a rejected run earns −m minutes), and
     # a domain floored at zero maps that week far below the viewBox, where the
     # browser clips it and the card silently hides the bad news. Non-negative data
-    # keeps bottom=0, i.e. exactly the previous framing.
-    top = _nice_top(max(values)) if max(values) > 0 else 0.0
-    bottom = -_nice_top(-min(values)) if min(values) < 0 else 0.0
+    # keeps bottom=0 and step=top/3, i.e. exactly the previous framing.
+    hi, lo = max(max(values), 0.0), min(min(values), 0.0)
+    if lo == 0.0:
+        top, bottom = _nice_top(hi), 0.0
+        step = top / 3
+    else:
+        # Snap both ends to multiples of a nice step so zero is itself a gridline.
+        step = _nice_step(hi - lo)
+        top, bottom = math.ceil(hi / step) * step, math.floor(lo / step) * step
     span = (top - bottom) or 1.0
     n = len(values)
     xs = [_PAD_L + plot_w * (i + 0.5) / n for i in range(n)]
@@ -122,7 +175,7 @@ def line_chart(chart_id: str, labels: list[str], values: list[float], unit: str,
     end_label = f"{_fmt(values[-1], 1)}{unit}"
     end_x = min(xs[-1] + 8, _W - _PAD_R - 4)
     return f"""<svg class="fd-chart" viewBox="0 0 {_W} {_H}" role="img" aria-label="{escape(series_name)} by week">
-{_grid_and_axis(top, unit, plot_h, bottom)}
+{_grid_and_axis(top, unit, plot_h, bottom, step)}
 <path class="fd-area" d="{area_path}"/>
 <path class="fd-line" d="{line_path}"/>
 <line id="cross-{chart_id}" class="fd-cross" x1="0" y1="{_PAD_T}" x2="0" y2="{baseline_y}" opacity="0"/>

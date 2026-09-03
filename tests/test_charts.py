@@ -2,8 +2,10 @@
 the weekly line chart's numeric domain.
 
 hours_saved per week can be negative (docs/metrics.md: a rejected run earns −m
-minutes), and that series feeds line_chart on the dashboard, so its y-domain
-must reach below zero — the terminal sparkline already does (test_terminal.py).
+minutes), and that series feeds line_chart on the dashboard, so its y-domain must
+reach below zero and stay readable there. The terminal sparkline survives the same
+input by flooring it (test_terminal.py), which a chart with a labeled axis cannot
+do: it has to show how deep the week went.
 """
 
 import re
@@ -14,6 +16,10 @@ from flightdeck.report.charts import _H, _PAD_B, _PAD_T, column_chart, hbar_char
 # The band a point may legally occupy: outside it the browser clips against the
 # viewBox and the value disappears from the page.
 _BAND = (_PAD_T, _H - _PAD_B)
+
+
+def _ticks(svg: str) -> list[str]:
+    return re.findall(r'class="fd-tick"[^>]*>([^<]+ h)<', svg)
 
 
 def _line_ys(svg: str) -> list[float]:
@@ -85,3 +91,36 @@ def test_column_chart_is_untouched_by_the_line_chart_domain_fix():
     # The zero line keeps its integer form; the bars' own ":.1f" coordinates are
     # untouched by the fix and stay as they were.
     assert '<line class="fd-axis" x1="44" y1="206" x2="544" y2="206"/>' in svg
+
+
+def test_line_chart_labels_zero_and_the_depth_of_a_bad_week():
+    # Keeping the negative week on the page is only half the fix: without a labeled
+    # zero the axis is a heavier rule at an arbitrary height, and the reader can see
+    # the dip but not read how far it goes.
+    svg = line_chart("hours", ["W27", "W28", "W29"], [10.0, -20.0, 5.0], " h", "hours saved")
+    ticks = _ticks(svg)
+
+    assert "0 h" in ticks  # zero is on the scale, not implied by the frame
+    assert "-20 h" in ticks  # so is the floor of the domain: the depth of the week
+    values = [float(t.removesuffix(" h")) for t in ticks]
+    assert values == sorted(values)  # monotonic, emitted bottom of the band upward
+    assert len(set(ticks)) == len(ticks)  # every label distinguishable from its neighbour
+
+
+def test_line_chart_ticks_never_render_a_signed_zero():
+    # format.money and charts._money both promise a value that rounds to zero is
+    # unsigned. Ticks only started going negative with the two-sided domain, so the
+    # same promise has to hold here: "-0.0 h" beside "0.0 h" reads as two zeros.
+    ticks = _ticks(line_chart("hours", ["W27", "W28"], [0.0, -0.1], " h", "hours saved"))
+
+    assert not [t for t in ticks if t.startswith("-") and float(t.removesuffix(" h")) == 0], ticks
+    assert len(set(ticks)) == len(ticks), ticks  # decimals come off the step, not the value
+
+
+def test_line_chart_draws_no_hairline_under_the_zero_axis():
+    # The axis already rules zero; a gridline at the same y would stack two opaque
+    # 1px strokes and cost the chart one of its three promised hairlines.
+    svg = line_chart("hours", ["W27", "W28"], [-5.0, -10.0], " h", "hours saved")
+
+    axis_y = re.search(r'class="fd-axis" x1="44" y1="([\d.]+)"', svg).group(1)
+    assert axis_y not in re.findall(r'class="fd-grid" x1="44" y1="([\d.]+)"', svg)
