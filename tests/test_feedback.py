@@ -5,6 +5,8 @@ Every entry point (the CLI, the Slack adapter) funnels through
 API and ledger events" is enforced at the source.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from flightdeck.feedback import FeedbackError, record_feedback
@@ -61,3 +63,50 @@ def test_record_feedback_rejects_negative_or_non_finite_minutes(org, store, ledg
     run = _seed_run(org, store, ledger)
     with pytest.raises(FeedbackError, match="non-negative number"):
         record_feedback(store, ledger, run.id, "accepted", human_minutes=bad)
+
+
+def test_backdated_feedback_seals_the_event_time_in_the_ledger(org, store, ledger):
+    # A review imported or backfilled from another system carries its own time.
+    # The store row and the ledger entry describe the SAME event, so they must not
+    # disagree about when it happened -- the ledger is the artifact an auditor
+    # reads, and runner.record already keeps this contract (at=run.finished_at).
+    run = _seed_run(org, store, ledger)
+    when = NOW - timedelta(days=200)
+
+    entry = record_feedback(store, ledger, run.id, "accepted", human_minutes=3, by="ana", at=when)
+    sealed = [e for e in ledger.entries() if e["event"] == "feedback_recorded"][-1]
+
+    assert entry.at == when
+    assert sealed["at"] == when.isoformat()  # was the wall clock, months adrift
+    assert store.feedback_map()[run.id].at.isoformat() == sealed["at"]
+
+
+def test_feedback_without_an_explicit_time_still_seals_what_the_row_says(org, store, ledger):
+    # The default path must stay consistent too: whatever "now" the row got is the
+    # one the chain seals, not a second clock reading taken a moment later.
+    run = _seed_run(org, store, ledger)
+
+    entry = record_feedback(store, ledger, run.id, "edited", human_minutes=2, by="ana")
+    sealed = [e for e in ledger.entries() if e["event"] == "feedback_recorded"][-1]
+
+    # Compare instants, not strings: the row's default carries the local offset,
+    # the ledger is normalized to UTC, and both name the same moment.
+    assert datetime.fromisoformat(sealed["at"]) == entry.at
+    assert ledger.verify().ok  # and the chain still walks clean
+
+
+def test_ledger_stays_utc_whatever_offset_the_caller_hands_in(org, store, ledger):
+    # `audit tail` renders entry["at"][:16] -- the offset is sliced off before the
+    # reader sees it. So every entry in the file has to share one convention, or a
+    # review shows up hours before the run it reviews. The runner and the demo
+    # seeder both write UTC; feedback must not be the one exception.
+    run = _seed_run(org, store, ledger)
+    tokyo = timezone(timedelta(hours=9))
+
+    record_feedback(store, ledger, run.id, "accepted", by="ana", at=NOW.astimezone(tokyo))
+    stamps = [e["at"] for e in ledger.entries()]
+
+    assert all(s.endswith("+00:00") for s in stamps), stamps
+    # ...and the feedback still cannot predate the run it attests to.
+    events = {e["event"]: e["at"] for e in ledger.entries()}
+    assert events["feedback_recorded"] >= events["run_completed"]
