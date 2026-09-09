@@ -300,7 +300,11 @@ def run(
             + (f" · [bold]{result.redactions} PII redaction(s)[/bold]" if result.redactions else "")
         )
         console.print(Rule(style="dim"))
-        console.print(escape(result.output or ""))
+        # markup=False/emoji=False rather than escape(): this line is the completion
+        # and nothing else, so it can opt out of rich's parsing entirely. escape()
+        # would still double a trailing backslash and still let ":rocket:" become an
+        # emoji -- and a workflow that drafts Slack messages emits exactly that.
+        console.print(result.output or "", markup=False, emoji=False)
         console.print(Rule(style="dim"))
         console.print(
             f"[dim]close the loop:[/dim] flightdeck feedback {result.id} "

@@ -111,7 +111,9 @@ def test_demo_refuses_a_real_org_with_exit_2(tmp_path):
 
 def test_run_prints_the_model_output_verbatim(tmp_path):
     # The output is the artifact the reviewer judges, so it must reach them
-    # character-for-character. Printed as rich markup it did not: the mock
+    # character-for-character -- which is why the site renders with markup=False
+    # rather than escape(), whose backslash doubling is not the identity on text
+    # ending in one. Printed as rich markup it did not arrive intact: the mock
     # provider's own "[mock:<model>]" prefix was parsed as a style tag and
     # silently eaten, out of the box, on the first run a new user types.
     root = _init(tmp_path)
@@ -157,6 +159,7 @@ def test_run_failure_reason_survives_rich_markup(tmp_path):
 
     assert not isinstance(result.exception, MarkupError)
     assert result.exit_code == 1, result.output
+    assert "bogus[/x]" in result.output  # escaped, not swallowed
 
 
 def test_run_feedback_report_loop_offline(tmp_path):
