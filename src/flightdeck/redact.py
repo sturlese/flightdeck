@@ -29,7 +29,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # characters (Norway — NO, 2 check digits, 11 more), which is two groups plus
     # that contiguous remainder. A three-group floor needs 16 and misses it
     # entirely, leaving the account number in the payload. The length check below
-    # keeps the lower floor from claiming shorter alphanumeric noise.
+    # keeps the lower floor from claiming shorter alphanumeric noise. It is a
+    # FLOOR ONLY: rejecting a candidate returns the span untouched and re.sub
+    # resumes past it rather than retrying a shorter alternative, so an upper
+    # bound would surrender a real IBAN that happens to sit inside a longer run
+    # of groups — under-redaction, the exact failure this pattern guards.
     ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?:[A-Z0-9]{1,3})?\b")),
     # 13–19 digits, optional space/dash between digits; anchored on a digit at
     # both ends so a trailing separator is never swallowed into the redaction.
@@ -73,8 +77,8 @@ def redact(text: str, extra_patterns: list[str] | None = None) -> RedactionResul
     def _sub(kind: str, pattern: re.Pattern[str], value: str) -> str:
         def _replace(match: re.Match[str]) -> str:
             digits = re.sub(r"\D", "", match.group(0))
-            if kind == "iban" and not (15 <= len(match.group(0).replace(" ", "")) <= 34):
-                return match.group(0)  # outside the legal IBAN length range — leave it
+            if kind == "iban" and len(match.group(0).replace(" ", "")) < 15:
+                return match.group(0)  # shorter than any legal IBAN — leave it
             if kind == "card" and not (13 <= len(digits) <= 19 and _luhn_ok(digits)):
                 return match.group(0)  # long number, but not a card — leave it
             if kind == "phone" and not (9 <= len(digits) <= 15):

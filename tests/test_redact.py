@@ -45,6 +45,16 @@ def test_iban_does_not_claim_a_token_too_short_to_be_one():
     assert "iban" not in result.by_kind
 
 
+def test_a_long_group_run_containing_an_iban_is_still_claimed():
+    # The floor guard rejects by returning the span untouched, and re.sub then
+    # resumes PAST it instead of retrying a shorter alternative. So the guard
+    # must stay a floor: an upper length bound would hand back this whole
+    # 35-character span — real IBAN included — and redact nothing at all.
+    result = redact("Wire AB12 3456 7890 1234 5678 NO9386011117947 today")
+    assert result.text == "Wire [REDACTED:iban] today"
+    assert result.by_kind["iban"] == 1
+
+
 def test_credit_card_requires_luhn():
     valid = redact("card 4111 1111 1111 1111")  # Luhn-valid test number
     invalid = redact("order id 4111 1111 1111 1112")  # fails Luhn — not a card
