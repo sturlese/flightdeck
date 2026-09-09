@@ -28,6 +28,23 @@ def test_iban_does_not_eat_a_following_short_code():
     assert result.text == "pay [REDACTED:iban] ID 5"
 
 
+def test_shortest_legal_iban_is_redacted():
+    # NO9386011117947 — Norway, 15 characters, the shortest IBAN the standard
+    # allows. A three-group floor needs 16, so this one used to travel to the
+    # vendor intact while the run record reported zero redactions.
+    result = redact("Refund to NO9386011117947 today")
+    assert result.text == "Refund to [REDACTED:iban] today"
+    assert result.by_kind["iban"] == 1
+
+
+def test_iban_does_not_claim_a_token_too_short_to_be_one():
+    # The two-group floor must not turn short alphanumeric noise into an IBAN:
+    # 12 characters is below the standard's 15-character minimum.
+    result = redact("code AB12 CDEF GHIJ here")
+    assert result.text == "code AB12 CDEF GHIJ here"
+    assert "iban" not in result.by_kind
+
+
 def test_credit_card_requires_luhn():
     valid = redact("card 4111 1111 1111 1111")  # Luhn-valid test number
     invalid = redact("order id 4111 1111 1111 1112")  # fails Luhn — not a card
