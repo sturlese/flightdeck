@@ -28,6 +28,43 @@ def test_iban_does_not_eat_a_following_short_code():
     assert result.text == "pay [REDACTED:iban] ID 5"
 
 
+def test_shortest_legal_iban_is_redacted():
+    # NO9386011117947 — Norway, 15 characters, the shortest IBAN the standard
+    # allows. The three-group branch needs 16, so this one used to travel to the
+    # vendor intact while the run record reported zero redactions.
+    result = redact("Refund to NO9386011117947 today")
+    assert result.text == "Refund to [REDACTED:iban] today"
+    assert result.by_kind["iban"] == 1
+
+
+def test_iban_does_not_claim_a_token_too_short_to_be_one():
+    # The 15-char branch ends in a MANDATORY contiguous 3-char tail, so short
+    # alphanumeric noise cannot satisfy it: no legal IBAN is under 15 characters.
+    result = redact("code AB12 CDEF GHIJ here")
+    assert result.text == "code AB12 CDEF GHIJ here"
+    assert "iban" not in result.by_kind
+
+
+def test_a_reference_code_before_an_iban_does_not_swallow_it():
+    # The 15-char branch must never match a span it does not mean to redact: a
+    # discarded candidate is returned as-is and re.sub resumes PAST it, so a
+    # 2-letter/2-digit reference code in front of an IBAN would consume the
+    # IBAN's own country group and leak the rest.
+    result = redact("PO12 ACME MT84 MALT011000012345MTLCAST001S")
+    assert result.text == "PO12 ACME [REDACTED:iban]"
+    assert result.by_kind["iban"] == 1
+
+
+def test_a_long_group_run_containing_an_iban_is_still_claimed():
+    # 35 compact characters — one past the standard's 34-char ceiling, and the
+    # pattern's maximal reach. Length is enforced by the pattern rather than by a
+    # post-match check precisely so this span keeps being claimed whole instead
+    # of being handed back with the IBAN inside it.
+    result = redact("Wire AB12 3456 7890 1234 5678 NO9386011117947 today")
+    assert result.text == "Wire [REDACTED:iban] today"
+    assert result.by_kind["iban"] == 1
+
+
 def test_credit_card_requires_luhn():
     valid = redact("card 4111 1111 1111 1111")  # Luhn-valid test number
     invalid = redact("order id 4111 1111 1111 1112")  # fails Luhn — not a card

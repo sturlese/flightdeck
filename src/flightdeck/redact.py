@@ -25,7 +25,26 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # let it swallow the next word — "ES91 … 1332 EUR" ate "EUR". Favouring
     # precision over recall (see the module docstring), a rare space-separated final
     # IBAN group is left unredacted rather than corrupting the surrounding text.
-    ("iban", re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?:[A-Z0-9]{1,3})?\b")),
+    #
+    # The second branch exists because the first needs three 4-char groups, i.e.
+    # 16 characters, while the shortest legal IBAN is 15 — Norway, NO + 2 check
+    # digits + 11 more. That one was missed entirely and travelled to the vendor
+    # intact. It is two groups plus a MANDATORY contiguous 3-char tail, which is
+    # exactly 15 and nothing shorter.
+    #
+    # The length belongs in the pattern, not in a post-match check: a check that
+    # rejects a candidate returns the span untouched and re.sub then resumes PAST
+    # it, never retrying a shorter alternative — so a candidate matched only to be
+    # discarded swallows the start of a real IBAN standing behind it
+    # ("PO12 ACME MT84 MALT…" loses the Maltese one). Matching only what we mean
+    # to redact keeps that whole failure mode out of reach.
+    (
+        "iban",
+        re.compile(
+            r"\b[A-Z]{2}\d{2}"
+            r"(?:(?: ?[A-Z0-9]{4}){3,7}(?:[A-Z0-9]{1,3})?|(?: ?[A-Z0-9]{4}){2}[A-Z0-9]{3})\b"
+        ),
+    ),
     # 13–19 digits, optional space/dash between digits; anchored on a digit at
     # both ends so a trailing separator is never swallowed into the redaction.
     ("card", re.compile(r"\b\d(?:[ -]?\d){12,18}\b")),  # candidates; Luhn filters below
