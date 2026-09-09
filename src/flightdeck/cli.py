@@ -300,7 +300,11 @@ def run(
             + (f" · [bold]{result.redactions} PII redaction(s)[/bold]" if result.redactions else "")
         )
         console.print(Rule(style="dim"))
-        console.print(result.output or "")
+        # markup=False/emoji=False rather than escape(): this line is the completion
+        # and nothing else, so it can opt out of rich's parsing entirely. escape()
+        # would still double a trailing backslash and still let ":rocket:" become an
+        # emoji -- and a workflow that drafts Slack messages emits exactly that.
+        console.print(result.output or "", markup=False, emoji=False)
         console.print(Rule(style="dim"))
         console.print(
             f"[dim]close the loop:[/dim] flightdeck feedback {result.id} "
@@ -309,7 +313,7 @@ def run(
     else:
         style = "yellow" if result.status == "blocked" else "red"
         console.print(f"[{style} bold]✕ {result.status}[/{style} bold] · run {result.id}")
-        console.print(f"  {result.reason}")
+        console.print(f"  {escape(str(result.reason))}")
         console.print("  [dim]the attempt is recorded in the store and the audit ledger[/dim]")
         raise typer.Exit(1)
 
@@ -376,11 +380,11 @@ def tick(
                 )
             elif result.status == "blocked":
                 console.print(
-                    f"[yellow]✕ {workflow.id}: blocked[/yellow] ({cadence}) · {result.reason} "
+                    f"[yellow]✕ {workflow.id}: blocked[/yellow] ({cadence}) · {escape(str(result.reason))} "
                     "[dim](the period is spent; tick will not retry until next period)[/dim]"
                 )
             else:
-                console.print(f"[red]✕ {workflow.id}: failed[/red] ({cadence}) · {result.reason}")
+                console.print(f"[red]✕ {workflow.id}: failed[/red] ({cadence}) · {escape(str(result.reason))}")
     if config_errors:
         raise typer.Exit(2)
 
