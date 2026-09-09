@@ -109,6 +109,56 @@ def test_demo_refuses_a_real_org_with_exit_2(tmp_path):
     assert "meeting-minutes" in org.workflows
 
 
+def test_run_prints_the_model_output_verbatim(tmp_path):
+    # The output is the artifact the reviewer judges, so it must reach them
+    # character-for-character. Printed as rich markup it did not: the mock
+    # provider's own "[mock:<model>]" prefix was parsed as a style tag and
+    # silently eaten, out of the box, on the first run a new user types.
+    root = _init(tmp_path)
+
+    result = invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=Ana ships Friday.")
+
+    assert result.exit_code == 0, result.output
+    assert "[mock:" in result.output
+
+
+def test_run_output_survives_rich_markup_from_the_provider(tmp_path):
+    # A completion carrying a closing-tag fragment raised MarkupError AFTER the
+    # store row and the ledger entry were written: the run is recorded and
+    # billed as completed, the human never sees it, and the CLI exits 1 -- which
+    # this module's docstring reserves for a governance failure.
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    path = root / "models.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["models"][0]["model"] = "mock-fast[/x]"
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    result = invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=Ana ships Friday.")
+
+    assert not isinstance(result.exception, MarkupError)
+    assert result.exit_code == 0, result.output
+    assert "[/x]" in result.output
+
+
+def test_run_failure_reason_survives_rich_markup(tmp_path):
+    # The blocked/failed branch prints the provider's reason, which is no more
+    # trustworthy than its output. An unknown provider name reaches it verbatim.
+    from rich.errors import MarkupError
+
+    root = _init(tmp_path)
+    path = root / "models.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["models"][0]["provider"] = "bogus[/x]"
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+    result = invoke("run", "meeting-minutes", "--dir", str(root), "--var", "notes=Ana ships Friday.")
+
+    assert not isinstance(result.exception, MarkupError)
+    assert result.exit_code == 1, result.output
+
+
 def test_run_feedback_report_loop_offline(tmp_path):
     root = _init(tmp_path)
 
